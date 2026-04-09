@@ -11,31 +11,26 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "latest",
-    "@tanstack/react-query": "latest",
-    "react-router-dom": "latest",
+    "vite": "^6.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@tailwindcss/vite": "^4.1.14",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "lucide-react": "^0.546.0",
+    "react-router-dom": "^7.0.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "@tanstack/react-query": "^5.0.0",
     "react-virtuoso": "latest",
     "react-dropzone": "latest",
     "framer-motion": "latest",
-    "zustand": "latest",
-    "@google/genai": "latest",
-    "@tailwindcss/vite": "latest",
-    "clsx": "latest",
-    "date-fns": "latest",
-    "dotenv": "latest",
-    "lucide-react": "latest",
-    "motion": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "tailwind-merge": "latest",
-    "vite": "latest"
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "latest",
     "autoprefixer": "latest",
     "tailwindcss": "latest",
     "tsx": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "typescript": "latest"
   }
 }
