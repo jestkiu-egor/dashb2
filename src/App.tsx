@@ -5,22 +5,26 @@ import { ProjectList } from './components/ProjectList';
 import { ProjectDetail } from './components/ProjectDetail';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Finance } from './components/Finance';
-import { SAMPLE_PROJECTS } from './constants';
 import { Project, Task, Transaction, Proxy } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from './lib/supabase';
+import { db } from './lib/db';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const saved = localStorage.getItem('cosmo_projects');
-    return saved ? JSON.parse(saved) : SAMPLE_PROJECTS;
-  });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem('cosmo_projects', JSON.stringify(projects));
-  }, [projects]);
+    async function initData() {
+      setIsLoading(true);
+      const data = await db.fetchProjects();
+      setProjects(data);
+      setIsLoading(false);
+    }
+    initData();
+  }, []);
 
   useEffect(() => {
     // Простая проверка инициализации без сетевых запросов к несуществующим ресурсам
@@ -29,13 +33,19 @@ export default function App() {
     }
   }, []);
 
-  const handleAddProject = (newProject: Project) => {
-    setProjects(prev => [...prev, newProject]);
+  const handleAddProject = async (newProject: Project) => {
+    const created = await db.createProject(newProject.name, newProject.description || '');
+    if (created) {
+      setProjects(prev => [created, ...prev]);
+    }
   };
 
-  const handleDeleteProject = (id: string) => {
-    setProjects(prev => prev.filter(p => p.id !== id));
-    if (selectedProject?.id === id) setSelectedProject(null);
+  const handleDeleteProject = async (id: string) => {
+    if (window.confirm('Вы уверены, что хотите удалить проект? Все данные будут стерты.')) {
+      await db.deleteProject(id);
+      setProjects(prev => prev.filter(p => p.id !== id));
+      if (selectedProject?.id === id) setSelectedProject(null);
+    }
   };
 
   const handleUpdateProject = (updatedProject: Project) => {

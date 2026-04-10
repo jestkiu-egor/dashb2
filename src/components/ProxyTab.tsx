@@ -4,18 +4,16 @@ import {
   Plus, 
   Trash2, 
   Copy, 
-  Eye, 
   RefreshCcw, 
   ShieldCheck, 
-  ExternalLink,
   Save,
-  Key as KeyIcon,
-  Calendar
+  Key as KeyIcon
 } from 'lucide-react';
 import { Project, Proxy } from '../types';
-import { format, differenceInDays } from 'date-fns';
+import { differenceInDays } from 'date-fns';
 import { cn } from '../lib/utils';
-import { supabase } from '../lib/supabase';
+import { motion } from 'motion/react';
+import { db } from '../lib/db';
 
 interface ProxyTabProps {
   project: Project;
@@ -26,6 +24,28 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [newProxy, setNewProxy] = useState<Partial<Proxy>>({
+    type: 'HTTPS',
+    ip: '',
+    port: '',
+    login: '',
+    passwordHash: '',
+  });
+
+  // Загружаем API ключ при открытии вкладки
+  useEffect(() => {
+    async function loadSettings() {
+      const key = await db.getSetting(project.id, 'px6_api_key');
+      if (key) setApiKey(key);
+    }
+    loadSettings();
+  }, [project.id]);
+
+  const saveApiKey = async () => {
+    setIsLoading(true);
+    await db.saveSetting(project.id, 'px6_api_key', apiKey);
+    setIsLoading(false);
+  };
 
   const getDaysLeft = (date: Date) => {
     const days = differenceInDays(new Date(date), new Date());
@@ -37,20 +57,11 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     if (days < 7) return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
     return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
   };
-  const [newProxy, setNewProxy] = useState<Partial<Proxy>>({
-    type: 'HTTPS',
-    ip: '',
-    port: '',
-    login: '',
-    passwordHash: '',
-  });
 
-  // Реальный вызов API px6.me
   const fetchProxyInfo = async () => {
     if (!apiKey) return;
     setIsLoading(true);
     try {
-      // Используем CORS прокси для обхода ограничений браузера при прямом запросе к API
       const proxyUrl = 'https://corsproxy.io/?';
       const apiUrl = encodeURIComponent(`https://api.px6.me/v1/user/proxies?api_key=${apiKey}`);
       
@@ -58,49 +69,79 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
       const data = await response.json();
 
       if (data.status === 'success' && data.proxies) {
-        const fetchedProxies: Proxy[] = data.proxies.map((p: any) => ({
-          id: p.id.toString(),
-          ip: p.ip,
-          port: p.port_http, // Используем HTTP порт по умолчанию
-          login: p.login,
-          passwordHash: p.password,
-          type: p.type.toUpperCase() as any,
-          ipv6: p.ip_v6,
-          expiresAt: new Date(p.date_end * 1000), // px6 отдает время в секундах
-        }));
+        const fetchedProxies: Proxy[] = [];
+        
+        for (const p of data.proxies) {
+          const proxyData: Partial<Proxy> = {
+            ip: p.ip,
+            port: p.port_http.toString(),
+            login: p.login,
+            passwordHash: p.password,
+            type: p.type.toUpperCase() as any,
+            ipv6: p.ip_v6,
+            expiresAt: new Date(p.date_end * 1000),
+          };
+
+          const created = await db.addProxy(project.id, proxyData);
+          if (created) {
+            fetchedProxies.push({
+              id: created.id,
+              ip: created.ip,
+              port: created.port,
+              login: created.login,
+              passwordHash: created.password_hash,
+              type: created.proxy_type,
+              ipv6: created.ipv6,
+              expiresAt: new Date(created.expires_at),
+            });
+          }
+        }
 
         onUpdateProxies([...project.proxies, ...fetchedProxies]);
-        console.log('✅ Подгружено прокси:', fetchedProxies.length);
-      } else {
-        console.error('Ошибка API px6.me:', data.message || 'Неизвестная ошибка');
       }
     } catch (error) {
-      console.error('Ошибка сети при запросе к px6.me:', error);
+      console.error('Ошибка API px6.me:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleAddProxy = () => {
+  const handleAddProxy = async () => {
     if (newProxy.ip && newProxy.port) {
-      const proxy: Proxy = {
-        id: Math.random().toString(36).substr(2, 9),
-        ip: newProxy.ip || '',
-        port: newProxy.port || '',
+      const proxyData: Partial<Proxy> = {
+        ip: newProxy.ip,
+        port: newProxy.port,
         login: newProxy.login || '',
         passwordHash: newProxy.passwordHash || '',
         type: (newProxy.type as any) || 'HTTPS',
-        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 дней по дефолту
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         ipv6: newProxy.ipv6,
       };
-      onUpdateProxies([...project.proxies, proxy]);
+      
+      const created = await db.addProxy(project.id, proxyData);
+      if (created) {
+        onUpdateProxies([...project.proxies, {
+          id: created.id,
+          ip: created.ip,
+          port: created.port,
+          login: created.login,
+          passwordHash: created.password_hash,
+          type: created.proxy_type,
+          ipv6: created.ipv6,
+          expiresAt: new Date(created.expires_at),
+        }]);
+      }
+      
       setShowAddForm(false);
-      setNewProxy({ type: 'HTTPS' });
+      setNewProxy({ type: 'HTTPS', ip: '', port: '', login: '', passwordHash: '' });
     }
   };
 
-  const handleDeleteProxy = (id: string) => {
-    onUpdateProxies(project.proxies.filter(p => p.id !== id));
+  const handleDeleteProxy = async (id: string) => {
+    if (window.confirm('Удалить этот прокси из базы?')) {
+      await db.deleteProxy(id);
+      onUpdateProxies(project.proxies.filter(p => p.id !== id));
+    }
   };
 
   const handleCopy = (text: string) => {
@@ -109,7 +150,6 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Секция API Ключа */}
       <div className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -138,7 +178,10 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
             placeholder="Ваш API Key от px6.me"
             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600"
           />
-          <button className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2">
+          <button 
+            onClick={saveApiKey}
+            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
+          >
             <Save size={18} />
             Сохранить
           </button>
@@ -231,10 +274,10 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
               <div className="flex items-center gap-8">
                 <div className="text-right">
-                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Статус</div>
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold">
+                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Осталось</div>
+                  <div className={cn("flex items-center gap-2 text-sm font-bold", getStatusColor(getDaysLeft(proxy.expiresAt)))}>
                     <ShieldCheck size={16} />
-                    Активен
+                    {getDaysLeft(proxy.expiresAt)}д
                   </div>
                 </div>
                 
