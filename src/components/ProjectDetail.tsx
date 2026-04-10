@@ -13,19 +13,22 @@ import {
   MessageSquare,
   Plus
 } from 'lucide-react';
-import { Project, Proxy, ApiKey, Subscription } from '../types';
+import { Project, Proxy, ApiKey, Subscription, Task } from '../types';
 import { format, differenceInDays } from 'date-fns';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
+import { ProxyTab } from './ProxyTab';
 
 interface ProjectDetailProps {
   project: Project;
   onBack: () => void;
+  onUpdateProxies: (projectId: string, proxies: Proxy[]) => void;
+  onUpdateTasks: (projectId: string, tasks: Task[]) => void;
 }
 
 type TabType = 'overview' | 'proxy' | 'api' | 'subscriptions';
 
-export const ProjectDetail = ({ project, onBack }: ProjectDetailProps) => {
+export const ProjectDetail = ({ project, onBack, onUpdateProxies, onUpdateTasks }: ProjectDetailProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const tabs = [
@@ -36,14 +39,14 @@ export const ProjectDetail = ({ project, onBack }: ProjectDetailProps) => {
   ];
 
   const getStatusColor = (expiresAt: Date) => {
-    const daysLeft = differenceInDays(expiresAt, new Date());
+    const daysLeft = differenceInDays(new Date(expiresAt), new Date());
     if (daysLeft < 3) return 'text-red-400 bg-red-400/10 border-red-400/20';
     if (daysLeft < 7) return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
     return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
   };
 
   const getDaysLeft = (expiresAt: Date) => {
-    const days = differenceInDays(expiresAt, new Date());
+    const days = differenceInDays(new Date(expiresAt), new Date());
     return days > 0 ? `${days}д` : 'Истекло';
   };
 
@@ -169,7 +172,7 @@ export const ProjectDetail = ({ project, onBack }: ProjectDetailProps) => {
                       <div className="space-y-1 text-right">
                         <div className="text-slate-500 text-xs font-bold uppercase tracking-widest">Срок действия</div>
                         <div className="flex items-center gap-3 justify-end">
-                          <span className="text-emerald-400 font-mono text-sm">{format(key.expiresAt, 'dd.MM.yyyy')}</span>
+                          <span className="text-emerald-400 font-mono text-sm">{format(new Date(key.expiresAt), 'dd.MM.yyyy')}</span>
                           <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold border", getStatusColor(key.expiresAt))}>
                             {getDaysLeft(key.expiresAt)}
                           </span>
@@ -211,7 +214,7 @@ export const ProjectDetail = ({ project, onBack }: ProjectDetailProps) => {
                       <div className="space-y-1 text-right">
                         <div className="text-slate-500 text-xs font-bold uppercase tracking-widest">Следующее списание</div>
                         <div className="flex items-center gap-3 justify-end">
-                          <span className="text-emerald-400 font-mono text-sm">{format(sub.expiresAt, 'dd.MM.yyyy')}</span>
+                          <span className="text-emerald-400 font-mono text-sm">{format(new Date(sub.expiresAt), 'dd.MM.yyyy')}</span>
                           <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold border", getStatusColor(sub.expiresAt))}>
                             {getDaysLeft(sub.expiresAt)}
                           </span>

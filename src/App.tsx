@@ -18,8 +18,10 @@ export default function App() {
   useEffect(() => {
     async function checkSupabase() {
       try {
-        const { data, error } = await supabase.from('_test_connection_').select('*').limit(1);
-        if (error && error.code !== '42P01') {
+        const { error } = await supabase.from('_test_connection_').select('*').limit(1);
+        // Ошибка 'PGRST116' или '42P01' (таблица не найдена) — это успех соединения, 
+        // так как база ответила, что таблицы нет.
+        if (error && !['42P01', 'PGRST116'].includes(error.code)) {
           console.error('Ошибка подключения к Supabase:', error.message);
         } else {
           console.log('✅ Supabase подключен успешно!');
