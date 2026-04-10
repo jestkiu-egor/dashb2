@@ -1,9 +1,8 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Search, MoreVertical, Calendar, Layers, X, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Search, MoreVertical, Layers, X, Trash2, Edit2 } from 'lucide-react';
 import { Project } from '../types';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { useState } from 'react';
-import { cn } from '../lib/utils';
 
 interface ProjectListProps {
   projects: Project[];
@@ -17,6 +16,11 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  const formatDateSafely = (dateStr: any, formatStr: string) => {
+    const date = new Date(dateStr);
+    return isValid(date) ? format(date, formatStr) : 'Нет даты';
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,7 +99,6 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Edit logic here
                         setOpenMenuId(null);
                       }}
                       className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 transition-colors"
@@ -126,7 +129,7 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
               <div>
                 <h3 className="text-xl font-bold text-white group-hover:text-indigo-400 transition-colors">{project.name}</h3>
                 <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">
-                  {format(project.createdAt, 'dd.MM.yyyy')}
+                  {formatDateSafely(project.createdAt, 'dd.MM.yyyy')}
                 </span>
               </div>
             </div>
@@ -146,11 +149,11 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
               <div className="flex items-center gap-4 text-xs font-medium">
                 <div className="flex items-center gap-1.5 text-indigo-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                  <span>{project.tasks.length} Задач</span>
+                  <span>{project.tasks?.length || 0} Задач</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-purple-400">
                   <div className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                  <span>{project.proxies.length} Прокси</span>
+                  <span>{project.proxies?.length || 0} Прокси</span>
                 </div>
               </div>
             </div>

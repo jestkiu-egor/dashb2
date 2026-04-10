@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
-  MoreVertical, 
   Clock, 
   MessageSquare, 
   LayoutGrid, 
@@ -11,14 +10,13 @@ import {
   MoreHorizontal,
   X,
   Send,
-  User,
   ExternalLink,
   DollarSign,
   CheckCircle2,
   AlertCircle
 } from 'lucide-react';
 import { Task, TaskStatus, Comment } from '../types';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 
@@ -45,6 +43,11 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
   const [newTaskStatus, setNewTaskStatus] = useState<TaskStatus>('todo');
   const [newTaskAmount, setNewTaskAmount] = useState('');
   const [newTaskLink, setNewTaskLink] = useState('');
+
+  const formatDateSafely = (dateStr: any, formatStr: string) => {
+    const date = new Date(dateStr);
+    return isValid(date) ? format(date, formatStr) : 'Нет даты';
+  };
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,7 +121,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
   };
 
   const getColumnSum = (status: TaskStatus) => {
-    return tasks
+    return (tasks || [])
       .filter(t => t.status === status)
       .reduce((sum, t) => sum + (t.amount || 0), 0);
   };
@@ -199,7 +202,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                       </span>
                     </div>
                     <div className="text-[10px] font-bold text-indigo-400 pl-5 uppercase tracking-tighter">
-                      Всего: {getColumnSum(column.id).toLocaleString()} руб.
+                      Всего: {getColumnSum(column.id).toLocaleString()} ₽
                     </div>
                   </div>
                   <button 
@@ -268,7 +271,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                           {task.dueDate && (
                             <div className="flex items-center gap-1 text-[10px] font-bold">
                               <Clock size={12} />
-                              <span>{format(task.dueDate, 'dd.MM.yyyy')}</span>
+                              <span>{formatDateSafely(task.dueDate, 'dd.MM.yyyy')}</span>
                             </div>
                           )}
                           {task.externalUrl && (
@@ -282,7 +285,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                               <ExternalLink size={12} />
                             </a>
                           )}
-                          {task.comments.length > 0 && (
+                          {(task.comments?.length || 0) > 0 && (
                             <div className="flex items-center gap-1 text-[10px] font-bold">
                               <MessageSquare size={12} />
                               <span>{task.comments.length}</span>
@@ -338,7 +341,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                   </span>
                 </div>
                 <div className="col-span-2 text-right text-slate-500 text-xs font-mono">
-                  {task.dueDate ? format(task.dueDate, 'dd.MM.yyyy') : '-'}
+                  {task.dueDate ? formatDateSafely(task.dueDate, 'dd.MM.yyyy') : '-'}
                 </div>
               </motion.div>
             ))}
@@ -550,7 +553,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                  {selectedTask.comments.map((comment) => (
+                  {(selectedTask.comments || []).map((comment) => (
                     <div key={comment.id} className="space-y-2">
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-full bg-indigo-600/20 flex items-center justify-center text-[10px] text-indigo-400 font-bold">
@@ -558,7 +561,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                         </div>
                         <span className="text-xs font-bold text-white">{comment.author}</span>
                         <span className="text-[10px] text-slate-600 font-bold uppercase">
-                          {format(comment.createdAt, 'HH:mm')}
+                          {formatDateSafely(comment.createdAt, 'HH:mm')}
                         </span>
                       </div>
                       <div className="bg-white/5 border border-white/5 p-4 rounded-2xl rounded-tl-none text-sm text-slate-300 leading-relaxed">
@@ -566,7 +569,7 @@ export const KanbanBoard = ({ tasks, onUpdateTasks }: KanbanBoardProps) => {
                       </div>
                     </div>
                   ))}
-                  {selectedTask.comments.length === 0 && (
+                  {(selectedTask.comments || []).length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-30">
                       <MessageSquare size={48} />
                       <p className="text-sm font-bold uppercase tracking-widest">Сообщений пока нет</p>

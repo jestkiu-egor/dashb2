@@ -1,9 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, DollarSign, CreditCard, PieChart, Plus, X } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, DollarSign, CreditCard, Plus, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Project, Transaction } from '../types';
 import { useState } from 'react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 
 interface FinanceProps {
   projects: Project[];
@@ -18,7 +18,14 @@ export const Finance = ({ projects, onAddTransaction }: FinanceProps) => {
   const [tType, setTType] = useState<'income' | 'expense'>('expense');
   const [tCategory, setTCategory] = useState('Infrastructure');
 
-  const allTransactions = projects.flatMap(p => p.transactions).sort((a, b) => b.date.getTime() - a.date.getTime());
+  const formatDateSafely = (dateStr: any, formatStr: string) => {
+    const date = new Date(dateStr);
+    return isValid(date) ? format(date, formatStr) : 'Нет даты';
+  };
+
+  const allTransactions = projects
+    .flatMap(p => p.transactions)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   
   const totalIncome = allTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
   const totalExpense = allTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
@@ -111,7 +118,7 @@ export const Finance = ({ projects, onAddTransaction }: FinanceProps) => {
                   </div>
                   <div>
                     <h4 className="text-white font-bold text-sm">{t.name}</h4>
-                    <p className="text-slate-500 text-xs">{format(t.date, 'dd.MM.yyyy')} • {t.category}</p>
+                    <p className="text-slate-500 text-xs">{formatDateSafely(t.date, 'dd.MM.yyyy')} • {t.category}</p>
                   </div>
                 </div>
                 <div className="text-right">
