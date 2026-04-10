@@ -7,7 +7,8 @@ import {
   RefreshCcw, 
   ShieldCheck, 
   Save,
-  Key as KeyIcon
+  Key as KeyIcon,
+  ClipboardCheck
 } from 'lucide-react';
 import { Project, Proxy } from '../types';
 import { differenceInDays, isValid } from 'date-fns';
@@ -24,6 +25,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newProxy, setNewProxy] = useState<Partial<Proxy>>({
     type: 'HTTPS',
     ip: '',
@@ -72,24 +74,18 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const fetchProxyInfo = async () => {
     if (!apiKey) return;
     setIsLoading(true);
-    console.log('🚀 Начинаю загрузку прокси с px6.link...');
     try {
-      // Используем актуальный адрес из документации
       const proxyUrl = 'https://corsproxy.io/?';
       const apiUrl = encodeURIComponent(`https://px6.link/api/${apiKey}/getproxy`);
       
       const response = await fetch(proxyUrl + apiUrl);
       const data = await response.json();
-      
-      console.log('📦 Ответ от px6.link:', data);
 
       if (data.status === 'yes' && data.list) {
-        // Конвертируем объект list в массив
         const rawList = Object.values(data.list);
         const fetchedProxies: Proxy[] = [];
         
         for (const p: any of rawList) {
-          // host - это IPv4, ip - это IPv6 или IPv4
           const ipAddr = p.host || p.ip;
           const portStr = p.port.toString();
 
@@ -134,7 +130,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
       }
     } catch (error) {
       console.error('Ошибка API px6.link:', error);
-      alert('Произошла ошибка при запросе к API. Проверьте консоль браузера.');
+      alert('Произошла ошибка при запросе к API.');
     } finally {
       setIsLoading(false);
     }
@@ -178,12 +174,15 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     }
   };
 
-  const handleCopy = (text: string) => {
+  const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
+    setCopiedId(`${type}-${text}`);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
     <div className="space-y-6">
+      {/* Секция API */}
       <div className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -243,45 +242,16 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-slate-900/60 border border-white/10 p-6 rounded-3xl backdrop-blur-xl grid grid-cols-1 md:grid-cols-3 gap-4"
         >
-          <input 
-            placeholder="IP Адрес" 
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white"
-            value={newProxy.ip}
-            onChange={e => setNewProxy({...newProxy, ip: e.target.value})}
-          />
-          <input 
-            placeholder="Порт" 
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white"
-            value={newProxy.port}
-            onChange={e => setNewProxy({...newProxy, port: e.target.value})}
-          />
-          <select 
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white"
-            value={newProxy.type}
-            onChange={e => setNewProxy({...newProxy, type: e.target.value as any})}
-          >
+          <input placeholder="IP Адрес" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white" value={newProxy.ip} onChange={e => setNewProxy({...newProxy, ip: e.target.value})} />
+          <input placeholder="Порт" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white" value={newProxy.port} onChange={e => setNewProxy({...newProxy, port: e.target.value})} />
+          <select className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white" value={newProxy.type} onChange={e => setNewProxy({...newProxy, type: e.target.value as any})}>
             <option value="HTTPS">HTTPS</option>
             <option value="SOCKS5">SOCKS5</option>
             <option value="HTTP">HTTP</option>
           </select>
-          <input 
-            placeholder="Логин" 
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white"
-            value={newProxy.login}
-            onChange={e => setNewProxy({...newProxy, login: e.target.value})}
-          />
-          <input 
-            placeholder="Пароль" 
-            className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white"
-            value={newProxy.passwordHash}
-            onChange={e => setNewProxy({...newProxy, passwordHash: e.target.value})}
-          />
-          <button 
-            onClick={handleAddProxy}
-            className="bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all"
-          >
-            Добавить
-          </button>
+          <input placeholder="Логин" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white" value={newProxy.login} onChange={e => setNewProxy({...newProxy, login: e.target.value})} />
+          <input placeholder="Пароль" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white" value={newProxy.passwordHash} onChange={e => setNewProxy({...newProxy, passwordHash: e.target.value})} />
+          <button onClick={handleAddProxy} className="bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all">Добавить</button>
         </motion.div>
       )}
 
@@ -289,19 +259,54 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
         {(project.proxies || []).length > 0 ? (
           project.proxies.map((proxy) => (
             <div key={proxy.id} className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-6 group hover:border-indigo-500/30 transition-all">
-              <div className="flex items-center gap-6 min-w-[300px]">
+              <div className="flex items-center gap-6 min-w-[400px]">
                 <div className="w-12 h-12 bg-indigo-600/10 rounded-2xl flex items-center justify-center text-indigo-400">
                   <Globe size={24} />
                 </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400 text-xs font-bold uppercase tracking-widest">IP:PORT</span>
-                    <span className="text-white font-mono font-bold">{proxy.ip}:{proxy.port}</span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Прокси</span>
+                    {/* IP */}
+                    <button 
+                      onClick={() => handleCopy(proxy.ip, 'ip')}
+                      className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
+                    >
+                      {proxy.ip}
+                      <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                    </button>
+                    <span className="text-slate-600">:</span>
+                    {/* Port */}
+                    <button 
+                      onClick={() => handleCopy(proxy.port, 'port')}
+                      className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
+                    >
+                      {proxy.port}
+                      <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                    </button>
                     <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold rounded border border-indigo-500/20">{proxy.type}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-slate-500">User: <span className="text-orange-400 font-mono">{proxy.login}</span></span>
-                    <span className="text-slate-500">Pass: <span className="text-white font-mono">{proxy.passwordHash}</span></span>
+                  
+                  <div className="flex items-center gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-xs">User:</span>
+                      <button 
+                        onClick={() => handleCopy(proxy.login, 'user')}
+                        className="text-orange-400 font-mono hover:text-orange-300 transition-colors flex items-center gap-1 group/btn"
+                      >
+                        {proxy.login}
+                        <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 text-xs">Pass:</span>
+                      <button 
+                        onClick={() => handleCopy(proxy.passwordHash, 'pass')}
+                        className="text-white font-mono hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
+                      >
+                        {proxy.passwordHash}
+                        <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+                      </button>
+                    </div>
                   </div>
                   {proxy.ipv6 && <div className="text-[10px] text-slate-600 font-mono truncate max-w-[200px]">IPv6: {proxy.ipv6}</div>}
                 </div>
@@ -309,23 +314,32 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
               <div className="flex items-center gap-8">
                 <div className="text-right">
-                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Осталось</div>
+                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Срок</div>
                   <div className={cn("flex items-center gap-2 text-sm font-bold", getStatusColor(getDaysLeft(proxy.expiresAt)))}>
                     <ShieldCheck size={16} />
                     {getDaysLeft(proxy.expiresAt)}д
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 border-l border-white/5 pl-6">
+                  {/* Кнопка ОБЩЕГО копирования */}
                   <button 
-                    onClick={() => handleCopy(`${proxy.ip}:${proxy.port}`)}
-                    className="p-2 text-slate-500 hover:text-white transition-colors"
+                    onClick={() => handleCopy(`${proxy.ip}:${proxy.port}:${proxy.login}:${proxy.passwordHash}`, 'all')}
+                    title="Копировать всё (IP:PORT:USER:PASS)"
+                    className={cn(
+                      "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all",
+                      copiedId === `all-${proxy.ip}:${proxy.port}:${proxy.login}:${proxy.passwordHash}` 
+                        ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
+                        : "bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white"
+                    )}
                   >
-                    <Copy size={18} />
+                    {copiedId?.startsWith('all') ? <ClipboardCheck size={16} /> : <Copy size={16} />}
+                    <span>{copiedId?.startsWith('all') ? 'Скопировано!' : 'Копировать всё'}</span>
                   </button>
+                  
                   <button 
                     onClick={() => handleDeleteProxy(proxy.id)}
-                    className="p-2 text-slate-500 hover:text-red-400 transition-colors"
+                    className="p-3 text-slate-500 hover:text-red-400 hover:bg-rose-400/10 rounded-xl transition-all"
                   >
                     <Trash2 size={18} />
                   </button>
