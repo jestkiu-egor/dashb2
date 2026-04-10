@@ -153,5 +153,38 @@ export const db = {
   async deleteApiKey(id: string) {
     const { error } = await supabase.from('api_keys').delete().eq('id', id);
     if (error) console.error('Ошибка удаления API ключа:', error);
+  },
+
+  // Обновление статуса проверки ключа
+  async updateKeyStatus(id: string, status: 'ok' | 'error', errorMessage?: string) {
+    const { error } = await supabase
+      .from('api_keys')
+      .update({ 
+        last_status: status, 
+        last_check_at: new Date().toISOString() 
+      })
+      .eq('id', id);
+
+    if (status === 'error' && errorMessage) {
+      await supabase.from('api_key_logs').insert([{
+        key_id: id,
+        error_message: errorMessage
+      }]);
+    }
+  },
+
+  // Получение логов для ключа
+  async fetchKeyLogs(keyId: string) {
+    const { data, error } = await supabase
+      .from('api_key_logs')
+      .select('*')
+      .eq('key_id', keyId)
+      .order('created_at', { ascending: false });
+    return error ? [] : data;
+  },
+
+  // Очистка логов
+  async clearKeyLogs(keyId: string) {
+    await supabase.from('api_key_logs').delete().eq('key_id', keyId);
   }
 };
