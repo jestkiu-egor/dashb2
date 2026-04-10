@@ -40,6 +40,8 @@ export interface ApiKey {
   key: string;
   usageLocation: string;
   expiresAt: Date;
+  last_status?: 'ok' | 'error' | 'unknown';
+  last_check_at?: Date | string;
 }
 
 export interface Subscription {

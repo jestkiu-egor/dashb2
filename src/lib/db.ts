@@ -129,7 +129,9 @@ export const db = {
       name: k.name,
       key: k.key_value,
       usageLocation: k.usage_location,
-      expiresAt: k.expires_at ? new Date(k.expires_at) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+      expiresAt: k.expires_at ? new Date(k.expires_at) : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      last_status: k.last_status,
+      last_check_at: k.last_check_at
     }));
   },
 
