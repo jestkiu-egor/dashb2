@@ -6,7 +6,6 @@ import {
   CreditCard, 
   CheckCircle2, 
   Clock, 
-  AlertCircle, 
   Copy, 
   Eye, 
   Trash2, 
@@ -14,7 +13,7 @@ import {
   Plus
 } from 'lucide-react';
 import { Project, Proxy, ApiKey, Subscription, Task } from '../types';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, isValid } from 'date-fns';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { ProxyTab } from './ProxyTab';
@@ -38,16 +37,25 @@ export const ProjectDetail = ({ project, onBack, onUpdateProxies, onUpdateTasks 
     { id: 'subscriptions', label: 'Подписки', icon: CreditCard },
   ];
 
-  const getStatusColor = (expiresAt: Date) => {
-    const daysLeft = differenceInDays(new Date(expiresAt), new Date());
+  const getStatusColor = (expiresAt: Date | string) => {
+    const date = new Date(expiresAt);
+    if (!isValid(date)) return 'text-slate-400 bg-slate-400/10 border-slate-400/20';
+    const daysLeft = differenceInDays(date, new Date());
     if (daysLeft < 3) return 'text-red-400 bg-red-400/10 border-red-400/20';
     if (daysLeft < 7) return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
     return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
   };
 
-  const getDaysLeft = (expiresAt: Date) => {
-    const days = differenceInDays(new Date(expiresAt), new Date());
+  const getDaysLeft = (expiresAt: Date | string) => {
+    const date = new Date(expiresAt);
+    if (!isValid(date)) return 'Н/Д';
+    const days = differenceInDays(date, new Date());
     return days > 0 ? `${days}д` : 'Истекло';
+  };
+
+  const formatDateSafely = (dateStr: Date | string, formatStr: string) => {
+    const date = new Date(dateStr);
+    return isValid(date) ? format(date, formatStr) : 'Нет даты';
   };
 
   return (
@@ -172,7 +180,7 @@ export const ProjectDetail = ({ project, onBack, onUpdateProxies, onUpdateTasks 
                       <div className="space-y-1 text-right">
                         <div className="text-slate-500 text-xs font-bold uppercase tracking-widest">Срок действия</div>
                         <div className="flex items-center gap-3 justify-end">
-                          <span className="text-emerald-400 font-mono text-sm">{format(new Date(key.expiresAt), 'dd.MM.yyyy')}</span>
+                          <span className="text-emerald-400 font-mono text-sm">{formatDateSafely(key.expiresAt, 'dd.MM.yyyy')}</span>
                           <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold border", getStatusColor(key.expiresAt))}>
                             {getDaysLeft(key.expiresAt)}
                           </span>
@@ -214,7 +222,7 @@ export const ProjectDetail = ({ project, onBack, onUpdateProxies, onUpdateTasks 
                       <div className="space-y-1 text-right">
                         <div className="text-slate-500 text-xs font-bold uppercase tracking-widest">Следующее списание</div>
                         <div className="flex items-center gap-3 justify-end">
-                          <span className="text-emerald-400 font-mono text-sm">{format(new Date(sub.expiresAt), 'dd.MM.yyyy')}</span>
+                          <span className="text-emerald-400 font-mono text-sm">{formatDateSafely(sub.expiresAt, 'dd.MM.yyyy')}</span>
                           <span className={cn("px-2 py-0.5 rounded text-[10px] font-bold border", getStatusColor(sub.expiresAt))}>
                             {getDaysLeft(sub.expiresAt)}
                           </span>

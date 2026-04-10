@@ -10,7 +10,7 @@ import {
   Key as KeyIcon
 } from 'lucide-react';
 import { Project, Proxy } from '../types';
-import { differenceInDays } from 'date-fns';
+import { differenceInDays, isValid } from 'date-fns';
 import { cn } from '../lib/utils';
 import { motion } from 'motion/react';
 import { db } from '../lib/db';
@@ -47,9 +47,10 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     setIsLoading(false);
   };
 
-  const getDaysLeft = (date: Date) => {
-    const days = differenceInDays(new Date(date), new Date());
-    return days;
+  const getDaysLeft = (dateStr: Date | string) => {
+    const date = new Date(dateStr);
+    if (!isValid(date)) return 0;
+    return differenceInDays(date, new Date());
   };
 
   const getStatusColor = (days: number) => {
