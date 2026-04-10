@@ -12,7 +12,8 @@ import {
   Timer,
   FileText,
   RefreshCw,
-  X
+  X,
+  Layers
 } from 'lucide-react';
 import { Project, ApiKey } from '../types';
 import { cn } from '../lib/utils';
@@ -37,6 +38,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
   const [checkFrequency, setCheckFrequency] = useState(30);
   const [expandedCategories, setOpenCategories] = useState<string[]>([]);
   const [isChecking, setIsChecking] = useState(false);
+  const [checkingKeyId, setCheckingKeyId] = useState<string | null>(null);
   
   const [categories, setCategories] = useState(['2code.MailAi', '2code.MailAssistant', '2code.TranslateAI']);
   const [newKey, setNewKey] = useState({
@@ -55,7 +57,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
     }, checkFrequency * 60000);
 
     return () => clearInterval(checkIntervalRef.current);
-  }, [project.id, checkFrequency]);
+  }, [project.id, checkFrequency, keys.length]);
 
   async function loadKeys() {
     const data = await db.fetchApiKeys(project.id);
@@ -73,37 +75,47 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
   };
 
   const runHealthCheck = async () => {
-    if (isChecking) return;
+    if (isChecking || keys.length === 0) return;
     setIsChecking(true);
     
     for (const k of keys) {
+      setCheckingKeyId(k.id);
       try {
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const groqUrl = 'https://api.groq.com/openai/v1/chat/completions';
+        const proxyUrl = 'https://corsproxy.io/?';
+        
+        const response = await fetch(proxyUrl + encodeURIComponent(groqUrl), {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${k.key}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: [{ role: "user", content: "Если ты тут - дай ответ ок" }],
-            max_tokens: 5
+            model: "llama3-8b-8192",
+            messages: [{ role: "user", content: "Say ok" }],
+            max_tokens: 10
           })
         });
+
+        if (!response.ok) {
+          const errBody = await response.json().catch(() => ({}));
+          throw new Error(errBody.error?.message || `Status ${response.status}`);
+        }
 
         const result = await response.json();
         const content = result.choices?.[0]?.message?.content?.toLowerCase() || '';
         
-        if (content.includes('ок') || content.includes('ok')) {
+        if (content.includes('ok') || content.includes('ок')) {
           await db.updateKeyStatus(k.id, 'ok');
         } else {
-          await db.updateKeyStatus(k.id, 'error', `Неверный ответ: ${content.substring(0, 100)}`);
+          await db.updateKeyStatus(k.id, 'error', `Неожиданный ответ: ${content}`);
         }
       } catch (err: any) {
-        await db.updateKeyStatus(k.id, 'error', err.message || 'Ошибка сети');
+        await db.updateKeyStatus(k.id, 'error', err.message);
       }
     }
     
+    setCheckingKeyId(null);
     await loadKeys();
     setIsChecking(false);
   };
@@ -126,7 +138,6 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
     const name = prompt('Введите название нового модуля:');
     if (name && !categories.includes(name)) {
       setCategories(prev => [...prev, name]);
-      setNewKey(prev => ({ ...prev, name }));
     }
   };
 
@@ -156,6 +167,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
 
   return (
     <div className="space-y-6">
+      {/* Шапка управления */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-3xl border border-white/5 backdrop-blur-xl">
         <div className="flex items-center gap-4 flex-1 min-w-[300px]">
           <div className="relative flex-1">
@@ -186,25 +198,42 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
           <button 
             onClick={runHealthCheck}
             disabled={isChecking}
-            className="p-3 bg-white/5 hover:bg-white/10 text-indigo-400 rounded-2xl border border-white/10 transition-all disabled:opacity-50"
+            className={cn(
+              "p-3 rounded-2xl border transition-all flex items-center gap-2 font-bold text-xs",
+              isChecking ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-400" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+            )}
           >
-            <RefreshCw size={20} className={cn(isChecking && "animate-spin")} />
+            <RefreshCw size={18} className={cn(isChecking && "animate-spin")} />
+            {isChecking ? 'Идет опрос...' : 'Проверить все'}
           </button>
+          
+          <button 
+            onClick={handleAddCategory}
+            className="flex items-center gap-2 px-4 py-3 bg-white/5 text-slate-300 border border-white/10 rounded-2xl font-bold hover:bg-white/10 transition-all"
+          >
+            <Layers size={18} />
+            <span>Блок</span>
+          </button>
+
           <button onClick={() => setIsSeedModalOpen(true)} className="flex items-center gap-2 px-4 py-3 bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 rounded-2xl font-bold hover:bg-emerald-600 hover:text-white transition-all">
             <Database size={18} />
             <span>Импорт</span>
           </button>
           <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20">
             <Plus size={20} />
-            <span>Добавить Ключ</span>
+            <span>Ключ</span>
           </button>
         </div>
       </div>
 
+      {/* Список категорий */}
       <div className="space-y-4">
         {categories.map(cat => {
           const catKeys = filteredKeys.filter(k => k.name === cat);
           const isExpanded = expandedCategories.includes(cat);
+          const errorCount = catKeys.filter(k => (k as any).last_status === 'error').length;
+          const okCount = catKeys.filter(k => (k as any).last_status === 'ok').length;
+
           if (catKeys.length === 0 && !searchTerm) return null;
 
           return (
@@ -222,6 +251,12 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
                     {catKeys.length} ключей
                   </span>
                 </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex gap-2">
+                    {okCount > 0 && <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20">{okCount} OK</div>}
+                    {errorCount > 0 && <div className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-500/10 text-rose-500 text-[10px] font-bold rounded-full border border-rose-500/20">{errorCount} ERR</div>}
+                  </div>
+                </div>
               </button>
 
               <AnimatePresence>
@@ -231,10 +266,13 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
                       {catKeys.map(k => (
                         <div key={k.id} className="bg-slate-950/40 border border-white/5 p-4 rounded-2xl flex items-center justify-between group hover:border-indigo-500/20 transition-all">
                           <div className="flex items-center gap-4 flex-1">
-                            <div className={cn("w-3 h-3 rounded-full", 
-                              (k as any).last_status === 'ok' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" : 
-                              (k as any).last_status === 'error' ? "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]" : "bg-slate-700")} 
-                            />
+                            <div className="relative">
+                              <div className={cn("w-3 h-3 rounded-full transition-all duration-500", 
+                                checkingKeyId === k.id ? "bg-indigo-500 animate-pulse scale-125" :
+                                (k as any).last_status === 'ok' ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]" : 
+                                (k as any).last_status === 'error' ? "bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.4)]" : "bg-slate-700")} 
+                              />
+                            </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-3">
                                 <code className="text-slate-300 text-xs font-mono truncate max-w-[300px]">{k.key}</code>
@@ -242,7 +280,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
                               </div>
                               <div className="flex items-center gap-3 mt-1">
                                 <span className="text-[10px] text-slate-500 font-bold uppercase">{k.usageLocation || 'Без описания'}</span>
-                                {(k as any).last_check_at && <span className="text-[9px] text-slate-600 font-mono italic">{format(new Date((k as any).last_check_at), 'HH:mm')}</span>}
+                                {(k as any).last_check_at && <span className="text-[9px] text-slate-600 font-mono italic">{format(new Date((k as any).last_check_at), 'HH:mm:ss')}</span>}
                               </div>
                             </div>
                           </div>
@@ -266,15 +304,13 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
         })}
       </div>
 
+      {/* Модалки */}
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold text-white">Новый ключ</h2>
-                <button onClick={handleAddCategory} className="text-xs text-indigo-400 hover:underline">+ Создать модуль</button>
-              </div>
+              <h2 className="text-2xl font-bold text-white mb-6">Новый ключ</h2>
               <form onSubmit={async (e) => { e.preventDefault(); await db.addApiKey(project.id, { name: newKey.name, key: newKey.key, usageLocation: newKey.usageLocation }); loadKeys(); setIsModalOpen(false); }} className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Модуль</label>
@@ -282,7 +318,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
                     {categories.map(c => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
                   </select>
                 </div>
-                <input placeholder="Ключ gsk_..." value={newKey.key} onChange={e => setNewKey({...newKey, key: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none" />
+                <input placeholder="Ключ gsk_..." value={newKey.key} onChange={e => setNewKey({...newKey, key: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none font-mono" />
                 <input placeholder="Описание" value={newKey.usageLocation} onChange={e => setNewKey({...newKey, usageLocation: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none" />
                 <button type="submit" className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold">Сохранить</button>
               </form>
@@ -297,7 +333,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
               <h2 className="text-2xl font-bold text-white mb-2">Массовый импорт</h2>
               <p className="text-slate-400 text-xs mb-6">Вставьте список ключей (по одному в строке).</p>
               <div className="space-y-6">
-                <select value={newKey.name} onChange={e => setNewKey({...newKey, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none">
+                <select value={newKey.name} onChange={e => setNewKey({...newKey, name: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none font-bold">
                   {categories.map(c => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
                 </select>
                 <textarea value={seedInput} onChange={e => setSeedInput(e.target.value)} placeholder="Вставьте ключи здесь..." rows={10} className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none font-mono text-xs resize-none" />
@@ -314,7 +350,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white flex items-center gap-3"><FileText className="text-rose-400" />История ошибок</h2>
                 <div className="flex items-center gap-3">
-                  <button onClick={clearLogs} className="px-4 py-2 bg-rose-500/10 text-rose-400 text-xs font-bold rounded-xl hover:bg-rose-500 hover:white transition-all">Очистить БД</button>
+                  <button onClick={clearLogs} className="px-4 py-2 bg-rose-500/10 text-rose-400 text-xs font-bold rounded-xl hover:bg-rose-500 hover:text-white transition-all">Очистить БД</button>
                   <button onClick={() => setIsLogModalOpen(false)} className="p-2 text-slate-500 hover:text-white"><X /></button>
                 </div>
               </div>
@@ -322,13 +358,13 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
                 {keyLogs.map((log, i) => (
                   <div key={i} className="bg-white/[0.02] border border-white/5 p-4 rounded-2xl">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-rose-400 text-[10px] font-bold uppercase">Ошибка</span>
+                      <span className="text-rose-400 text-[10px] font-bold uppercase tracking-widest">Ошибка</span>
                       <span className="text-slate-600 text-[10px] font-mono">{format(new Date(log.created_at), 'dd.MM.yy HH:mm:ss')}</span>
                     </div>
-                    <p className="text-slate-300 text-sm font-mono bg-black/20 p-2 rounded-lg">{log.error_message}</p>
+                    <p className="text-slate-300 text-sm font-mono bg-black/20 p-2 rounded-lg border border-white/5">{log.error_message}</p>
                   </div>
                 ))}
-                {keyLogs.length === 0 && <p className="text-center text-slate-600 py-10">Ошибок не найдено</p>}
+                {keyLogs.length === 0 && <p className="text-center text-slate-600 py-10 uppercase text-xs font-bold tracking-widest">Ошибок не найдено</p>}
               </div>
             </motion.div>
           </div>
