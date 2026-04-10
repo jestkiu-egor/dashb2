@@ -1,8 +1,5 @@
 const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
-const PROXY_HOST = import.meta.env.VITE_PROXY_HOST || '161.115.231.113';
-const PROXY_PORT = import.meta.env.VITE_PROXY_PORT || '9149';
-const PROXY_USER = import.meta.env.VITE_PROXY_USER || 'UZtsd1';
-const PROXY_PASS = import.meta.env.VITE_PROXY_PASS || 'h4fWKh';
+const GROQ_PROXY_URL = import.meta.env.VITE_GROQ_PROXY_URL;
 
 interface ParsedTask {
   title: string;
@@ -31,9 +28,11 @@ Text: "${text}"
 Return JSON like:
 {"title":"...","description":"...","assignee":"...","dueDate":"2024-12-31","amount":5000,"externalUrl":"...","priority":"high"}`;
 
+  const targetUrl = GROQ_PROXY_URL 
+    ? `${GROQ_PROXY_URL}/v1/chat/completions` 
+    : 'https://api.groq.com/openai/v1/chat/completions';
+
   try {
-    const targetUrl = 'https://api.groq.com/openai/v1/chat/completions';
-    
     const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
@@ -50,7 +49,7 @@ Return JSON like:
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Groq API error:', errorData);
+      console.error('Groq API error:', response.status, errorData);
       return null;
     }
 
@@ -67,6 +66,38 @@ Return JSON like:
     return null;
   } catch (error) {
     console.error('Error parsing task:', error);
+    return null;
+  }
+}
+
+export async function transcribeAudio(file: File): Promise<string | null> {
+  const targetUrl = GROQ_PROXY_URL 
+    ? `${GROQ_PROXY_URL}/v1/audio/transcriptions` 
+    : 'https://api.groq.com/openai/v1/audio/transcriptions';
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('model', 'whisper-large-v3');
+  formData.append('language', 'ru');
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      console.error('Transcription error:', await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    return data.text || null;
+  } catch (error) {
+    console.error('Error transcribing:', error);
     return null;
   }
 }

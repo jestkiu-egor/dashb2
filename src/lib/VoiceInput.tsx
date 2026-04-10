@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Mic, MicOff, Upload, X, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Upload, Loader2 } from 'lucide-react';
 import { cn } from './utils';
+import { transcribeAudio } from './groq';
 
 interface VoiceInputProps {
   onTranscript: (text: string) => void;
@@ -11,45 +12,43 @@ interface VoiceInputProps {
 
 export function VoiceInput({ onTranscript, onFileTranscript, isProcessing }: VoiceInputProps) {
   const [isListening, setIsListening] = useState(false);
-  const [showFileUpload, setShowFileUpload] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const finalTranscriptRef = useRef('');
 
   const startListening = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
     
     if (!SpeechRecognition) {
-      alert('Ваш браузер не поддерживает голосовой ввод');
+      alert('Ваш браузер не поддерживает голосовой ввод. Используйте Chrome.');
       return;
     }
+
+    finalTranscriptRef.current = '';
 
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.lang = 'ru-RU';
     recognitionRef.current.continuous = true;
     recognitionRef.current.interimResults = true;
 
-    let finalTranscript = '';
-
-    recognitionRef.current.onresult = (event) => {
+    recognitionRef.current.onresult = (event: any) => {
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript + ' ';
-        } else {
-          interimTranscript += transcript;
+          finalTranscriptRef.current += transcript + ' ';
         }
       }
     };
 
     recognitionRef.current.onend = () => {
-      if (finalTranscript.trim()) {
-        onTranscript(finalTranscript.trim());
+      if (finalTranscriptRef.current.trim()) {
+        onTranscript(finalTranscriptRef.current.trim());
       }
       setIsListening(false);
     };
 
-    recognitionRef.current.onerror = (event) => {
+    recognitionRef.current.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
     };
@@ -69,36 +68,16 @@ export function VoiceInput({ onTranscript, onFileTranscript, isProcessing }: Voi
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setShowFileUpload(false);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('model', 'whisper-large-v3');
-
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`,
-        },
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        onFileTranscript(data.text);
-      } else {
-        console.error('Transcription error:', await response.text());
-        alert('Ошибка транскрибации');
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      alert('Ошибка загрузки файла');
+    const text = await transcribeAudio(file);
+    if (text) {
+      onFileTranscript(text);
+    } else {
+      alert('Не удалось распознать аудио. Попробуйте другой файл.');
     }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <>
       <input
         ref={fileInputRef}
         type="file"
@@ -112,17 +91,16 @@ export function VoiceInput({ onTranscript, onFileTranscript, isProcessing }: Voi
         whileTap={{ scale: 0.95 }}
         onClick={isListening ? stopListening : startListening}
         disabled={isProcessing}
+        title={isListening ? 'Остановить запись' : 'Начать запись'}
         className={cn(
           "p-3 rounded-xl transition-all",
           isListening 
-            ? "bg-red-500 hover:bg-red-600 text-white" 
+            ? "bg-red-500 hover:bg-red-600 text-white animate-pulse" 
             : "bg-indigo-600 hover:bg-indigo-500 text-white",
           isProcessing && "opacity-50 cursor-not-allowed"
         )}
       >
-        {isProcessing ? (
-          <Loader2 size={20} className="animate-spin" />
-        ) : isListening ? (
+        {isListening ? (
           <MicOff size={20} />
         ) : (
           <Mic size={20} />
@@ -134,10 +112,11 @@ export function VoiceInput({ onTranscript, onFileTranscript, isProcessing }: Voi
         whileTap={{ scale: 0.95 }}
         onClick={() => fileInputRef.current?.click()}
         disabled={isProcessing}
+        title="Загрузить аудио/видео"
         className="p-3 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-all"
       >
         <Upload size={20} />
       </motion.button>
-    </div>
+    </>
   );
 }
