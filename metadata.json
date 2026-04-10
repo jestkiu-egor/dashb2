@@ -1,0 +1,5 @@
+{
+  "name": "CosmoProject Manager",
+  "description": "A space-themed project management tool with Kanban boards, proxy tracking, and API key management.",
+  "requestFramePermissions": []
+}
