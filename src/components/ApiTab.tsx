@@ -62,12 +62,7 @@ export const ApiTab = ({ project, onUpdateApiKeys }: ApiTabProps) => {
   }, [project.id, checkFrequency]);
 
   async function loadKeys() {
-    const { data } = await (db as any).supabase
-      .from('api_keys')
-      .select('*')
-      .eq('project_id', project.id)
-      .order('created_at', { ascending: true });
-    
+    const data = await db.fetchApiKeys(project.id);
     if (data) {
       setKeys(data);
       // Собираем уникальные категории из базы
