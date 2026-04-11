@@ -13,7 +13,8 @@ import {
   FileText,
   RefreshCw,
   X,
-  Layers
+  Layers,
+  Clock
 } from 'lucide-react';
 import { Project, ApiKey } from '../types';
 import { cn } from '../lib/utils';
