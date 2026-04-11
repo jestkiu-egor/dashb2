@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Globe, 
   Plus, 
@@ -8,12 +8,14 @@ import {
   ShieldCheck, 
   Save,
   Key as KeyIcon,
-  ClipboardCheck
+  ClipboardCheck,
+  Timer,
+  Clock
 } from 'lucide-react';
 import { Project, Proxy } from '../types';
 import { differenceInDays, isValid } from 'date-fns';
 import { cn } from '../lib/utils';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../lib/db';
 
 interface ProxyTabProps {
@@ -26,6 +28,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [checkFrequency, setCheckFrequency] = useState(12); // в часах
   const [newProxy, setNewProxy] = useState<Partial<Proxy>>({
     type: 'HTTPS',
     ip: '',
@@ -34,13 +37,23 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     passwordHash: '',
   });
 
+  const checkIntervalRef = useRef<any>(null);
+
   useEffect(() => {
     async function loadSettings() {
       const key = await db.getSetting(project.id, 'px6_api_key');
       if (key) setApiKey(key);
     }
     loadSettings();
-  }, [project.id]);
+
+    // Настройка интервала опроса (переводим часы в мс)
+    if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+    checkIntervalRef.current = setInterval(() => {
+      fetchProxyInfo();
+    }, checkFrequency * 3600000);
+
+    return () => clearInterval(checkIntervalRef.current);
+  }, [project.id, checkFrequency]);
 
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
@@ -50,7 +63,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     setIsLoading(true);
     try {
       await db.saveSetting(project.id, 'px6_api_key', apiKey);
-      alert('✅ API Ключ успешно сохранен в базу');
+      alert('✅ API Ключ сохранен. Начинаю синхронизацию...');
       fetchProxyInfo();
     } catch (err) {
       alert('❌ Ошибка при сохранении ключа');
@@ -74,6 +87,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const fetchProxyInfo = async () => {
     if (!apiKey) return;
     setIsLoading(true);
+    console.log('🚀 Синхронизация прокси с px6.link...');
     try {
       const proxyUrl = 'https://corsproxy.io/?';
       const apiUrl = encodeURIComponent(`https://px6.link/api/${apiKey}/getproxy`);
@@ -83,54 +97,58 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
       if (data.status === 'yes' && data.list) {
         const rawList = Object.values(data.list);
-        const fetchedProxies: Proxy[] = [];
+        let updatedCount = 0;
+        let addedCount = 0;
         
+        // Получаем актуальный список прокси из базы перед обработкой
+        const currentProjects = await db.fetchProjects();
+        const currentProject = currentProjects.find(p => p.id === project.id);
+        const currentProxies = currentProject?.proxies || [];
+
         for (const p: any of rawList) {
           const ipAddr = p.host || p.ip;
           const portStr = p.port.toString();
+          const expirationDate = new Date(p.unixtime_end * 1000);
 
-          const exists = (project.proxies || []).some(existing => 
-            existing.ip === ipAddr && existing.port === portStr
-          );
-          if (exists) continue;
+          // Ищем существующий прокси по IP и Порту
+          const existing = currentProxies.find(ep => ep.ip === ipAddr && ep.port === portStr);
 
-          const proxyData: Partial<Proxy> = {
-            ip: ipAddr,
-            port: portStr,
-            login: p.user,
-            passwordHash: p.pass,
-            type: (p.type === 'socks' ? 'SOCKS5' : 'HTTPS') as any,
-            ipv6: p.host ? p.ip : undefined,
-            expiresAt: new Date(p.unixtime_end * 1000),
-          };
-
-          const created = await db.addProxy(project.id, proxyData);
-          if (created) {
-            fetchedProxies.push({
-              id: created.id,
-              ip: created.ip,
-              port: created.port,
-              login: created.login,
-              passwordHash: created.password_hash,
-              type: created.proxy_type,
-              ipv6: created.ipv6,
-              expiresAt: new Date(created.expires_at),
-            });
+          if (existing) {
+            // Если прокси есть, обновляем дату окончания, если она изменилась
+            if (new Date(existing.expiresAt).getTime() !== expirationDate.getTime()) {
+              await db.updateProxy(existing.id, { expiresAt: expirationDate });
+              updatedCount++;
+            }
+          } else {
+            // Если прокси нет, добавляем как новый
+            const proxyData: Partial<Proxy> = {
+              ip: ipAddr,
+              port: portStr,
+              login: p.user,
+              passwordHash: p.pass,
+              type: (p.type === 'socks' ? 'SOCKS5' : 'HTTPS') as any,
+              ipv6: p.host ? p.ip : undefined,
+              expiresAt: expirationDate,
+            };
+            await db.addProxy(project.id, proxyData);
+            addedCount++;
           }
         }
 
-        if (fetchedProxies.length > 0) {
-          onUpdateProxies([...(project.proxies || []), ...fetchedProxies]);
-          alert(`✅ Подгружено новых прокси: ${fetchedProxies.length}\nБаланс: ${data.balance} ${data.currency}`);
-        } else {
-          alert(`Новых прокси не найдено.\nБаланс: ${data.balance} ${data.currency}`);
+        // Обновляем состояние в приложении
+        const refreshedProjects = await db.fetchProjects();
+        const refreshedProject = refreshedProjects.find(p => p.id === project.id);
+        if (refreshedProject) {
+          onUpdateProxies(refreshedProject.proxies);
         }
+        
+        alert(`✅ Синхронизация завершена!\nДобавлено: ${addedCount}\nОбновлено дат: ${updatedCount}\nБаланс: ${data.balance} ${data.currency}`);
       } else {
         alert(`Ошибка API: ${data.error || 'Неверный формат ответа'}`);
       }
     } catch (error) {
       console.error('Ошибка API px6.link:', error);
-      alert('Произошла ошибка при запросе к API.');
+      alert('Ошибка при запросе к API. Проверьте консоль.');
     } finally {
       setIsLoading(false);
     }
@@ -150,16 +168,9 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
       
       const created = await db.addProxy(project.id, proxyData);
       if (created) {
-        onUpdateProxies([...(project.proxies || []), {
-          id: created.id,
-          ip: created.ip,
-          port: created.port,
-          login: created.login,
-          passwordHash: created.password_hash,
-          type: created.proxy_type,
-          ipv6: created.ipv6,
-          expiresAt: new Date(created.expires_at),
-        }]);
+        const refreshed = await db.fetchProjects();
+        const proj = refreshed.find(p => p.id === project.id);
+        if (proj) onUpdateProxies(proj.proxies);
       }
       
       setShowAddForm(false);
@@ -182,25 +193,44 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Секция API */}
-      <div className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl space-y-4">
-        <div className="flex items-center justify-between">
+      {/* Секция API и Мониторинга */}
+      <div className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-indigo-600/10 rounded-xl flex items-center justify-center text-indigo-400">
               <KeyIcon size={20} />
             </div>
             <div>
-              <h3 className="text-white font-bold">Интеграция px6.link</h3>
-              <p className="text-slate-400 text-xs">Введите API ключ для синхронизации данных</p>
+              <h3 className="text-white font-bold text-lg text-indigo-100">Интеграция px6.link</h3>
+              <p className="text-slate-400 text-xs">Автоматическое обновление срока действия прокси</p>
             </div>
           </div>
-          <button 
-            onClick={fetchProxyInfo}
-            disabled={isLoading || !apiKey}
-            className="p-2 text-slate-400 hover:text-white transition-colors disabled:opacity-50"
-          >
-            <RefreshCcw size={20} className={cn(isLoading && "animate-spin")} />
-          </button>
+          
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
+              <Timer size={16} className="text-indigo-400" />
+              <div className="flex flex-col">
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Опрос (часы)</span>
+                <input 
+                  type="number" 
+                  value={checkFrequency}
+                  onChange={(e) => setCheckFrequency(parseInt(e.target.value) || 1)}
+                  className="bg-transparent text-white font-bold outline-none w-10 text-xs"
+                />
+              </div>
+            </div>
+            <button 
+              onClick={fetchProxyInfo}
+              disabled={isLoading || !apiKey}
+              className={cn(
+                "p-3 rounded-2xl border transition-all flex items-center gap-2 font-bold text-xs uppercase tracking-widest",
+                isLoading ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-400" : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+              )}
+            >
+              <RefreshCw size={18} className={cn(isLoading && "animate-spin")} />
+              {isLoading ? 'Обновление...' : 'Обновить сейчас'}
+            </button>
+          </div>
         </div>
         
         <div className="flex gap-3">
@@ -209,15 +239,15 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="Ваш API Key от px6.link"
-            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600"
+            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 font-mono"
           />
           <button 
             onClick={saveApiKey}
             disabled={isLoading}
-            className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50"
+            className="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2 disabled:opacity-50"
           >
             <Save size={18} />
-            {isLoading ? 'Загрузка...' : 'Сохранить'}
+            {isLoading ? '...' : 'Сохранить'}
           </button>
         </div>
       </div>
@@ -225,7 +255,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
           <Globe size={20} className="text-indigo-400" />
-          Список Прокси
+          Активные прокси
         </h2>
         <button 
           onClick={() => setShowAddForm(!showAddForm)}
@@ -266,20 +296,12 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <span className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Прокси</span>
-                    {/* IP */}
-                    <button 
-                      onClick={() => handleCopy(proxy.ip, 'ip')}
-                      className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
-                    >
+                    <button onClick={() => handleCopy(proxy.ip, 'ip')} className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn">
                       {proxy.ip}
                       <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
                     </button>
                     <span className="text-slate-600">:</span>
-                    {/* Port */}
-                    <button 
-                      onClick={() => handleCopy(proxy.port, 'port')}
-                      className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
-                    >
+                    <button onClick={() => handleCopy(proxy.port, 'port')} className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn">
                       {proxy.port}
                       <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
                     </button>
@@ -289,20 +311,14 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
                   <div className="flex items-center gap-6 text-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-slate-500 text-xs">User:</span>
-                      <button 
-                        onClick={() => handleCopy(proxy.login, 'user')}
-                        className="text-orange-400 font-mono hover:text-orange-300 transition-colors flex items-center gap-1 group/btn"
-                      >
+                      <button onClick={() => handleCopy(proxy.login, 'user')} className="text-orange-400 font-mono hover:text-orange-300 transition-colors flex items-center gap-1 group/btn">
                         {proxy.login}
                         <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-slate-500 text-xs">Pass:</span>
-                      <button 
-                        onClick={() => handleCopy(proxy.passwordHash, 'pass')}
-                        className="text-white font-mono hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn"
-                      >
+                      <button onClick={() => handleCopy(proxy.passwordHash, 'pass')} className="text-white font-mono hover:text-indigo-400 transition-colors flex items-center gap-1 group/btn">
                         {proxy.passwordHash}
                         <Copy size={12} className="opacity-0 group-hover/btn:opacity-100 transition-opacity" />
                       </button>
@@ -322,7 +338,6 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
                 </div>
                 
                 <div className="flex items-center gap-2 border-l border-white/5 pl-6">
-                  {/* Кнопка ОБЩЕГО копирования */}
                   <button 
                     onClick={() => handleCopy(`${proxy.ip}:${proxy.port}:${proxy.login}:${proxy.passwordHash}`, 'all')}
                     title="Копировать всё (IP:PORT:USER:PASS)"
@@ -337,10 +352,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
                     <span>{copiedId?.startsWith('all') ? 'Скопировано!' : 'Копировать всё'}</span>
                   </button>
                   
-                  <button 
-                    onClick={() => handleDeleteProxy(proxy.id)}
-                    className="p-3 text-slate-500 hover:text-red-400 hover:bg-rose-400/10 rounded-xl transition-all"
-                  >
+                  <button onClick={() => handleDeleteProxy(proxy.id)} className="p-3 text-slate-500 hover:text-red-400 hover:bg-rose-400/10 rounded-xl transition-all">
                     <Trash2 size={18} />
                   </button>
                 </div>

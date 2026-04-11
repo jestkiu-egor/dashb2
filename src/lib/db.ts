@@ -85,6 +85,20 @@ export const db = {
     if (error) console.error('Ошибка удаления прокси:', error);
   },
 
+  // Обновление данных прокси (например, срока действия)
+  async updateProxy(id: string, updates: Partial<Proxy>) {
+    const { error } = await supabase
+      .from('proxies')
+      .update({
+        expires_at: updates.expiresAt?.toISOString(),
+        proxy_type: updates.type,
+        ip: updates.ip,
+        port: updates.port
+      })
+      .eq('id', id);
+    if (error) console.error('Ошибка обновления прокси:', error);
+  },
+
   // Сохранение настроек проекта (например, API ключа)
   async saveSetting(projectId: string, key: string, value: string) {
     const { error } = await supabase
