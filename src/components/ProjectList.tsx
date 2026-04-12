@@ -9,10 +9,12 @@ interface ProjectListProps {
   onSelectProject: (project: Project) => void;
   onAddProject: (project: Project) => void;
   onDeleteProject: (id: string) => void;
+  onUpdateProject: (project: Project) => void;
 }
 
-export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteProject }: ProjectListProps) => {
+export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteProject, onUpdateProject }: ProjectListProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [projectName, setProjectName] = useState('');
   const [projectDesc, setProjectDesc] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -22,23 +24,46 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
     return isValid(date) ? format(date, formatStr) : 'Нет даты';
   };
 
+  const handleOpenCreate = () => {
+    setEditingProject(null);
+    setProjectName('');
+    setProjectDesc('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (project: Project) => {
+    setEditingProject(project);
+    setProjectName(project.name);
+    setProjectDesc(project.description || '');
+    setIsModalOpen(true);
+    setOpenMenuId(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectName.trim()) return;
 
-    const newProject: Project = {
-      id: Math.random().toString(36).substr(2, 9),
-      name: projectName,
-      description: projectDesc,
-      proxies: [],
-      apiKeys: [],
-      subscriptions: [],
-      tasks: [],
-      transactions: [],
-      createdAt: new Date(),
-    };
+    if (editingProject) {
+      onUpdateProject({
+        ...editingProject,
+        name: projectName,
+        description: projectDesc,
+      });
+    } else {
+      const newProject: Project = {
+        id: Math.random().toString(36).substr(2, 9),
+        name: projectName,
+        description: projectDesc,
+        proxies: [],
+        apiKeys: [],
+        subscriptions: [],
+        tasks: [],
+        transactions: [],
+        createdAt: new Date(),
+      };
+      onAddProject(newProject);
+    }
 
-    onAddProject(newProject);
     setProjectName('');
     setProjectDesc('');
     setIsModalOpen(false);
@@ -52,7 +77,7 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
           <p className="text-slate-400 mt-1">Управляйте вашими проектами и задачами.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={handleOpenCreate}
           className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-semibold transition-all shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_30px_rgba(79,70,229,0.6)]"
         >
           <Plus size={20} />
@@ -94,12 +119,12 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
                     initial={{ opacity: 0, scale: 0.9, y: -10 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.9, y: -10 }}
-                    className="absolute right-0 mt-2 w-48 bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden"
+                    className="absolute right-0 mt-2 w-48 bg-slate-900 border border-white/10 rounded-xl shadow-2xl overflow-hidden z-30"
                   >
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setOpenMenuId(null);
+                        handleOpenEdit(project);
                       }}
                       className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-300 hover:bg-white/5 transition-colors"
                     >
@@ -178,7 +203,7 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
               className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl"
             >
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-2xl font-bold text-white">Новый проект</h2>
+                <h2 className="text-2xl font-bold text-white">{editingProject ? 'Редактировать проект' : 'Новый проект'}</h2>
                 <button 
                   onClick={() => setIsModalOpen(false)}
                   className="p-2 hover:bg-white/5 rounded-xl transition-colors text-slate-400"
@@ -213,7 +238,7 @@ export const ProjectList = ({ projects, onSelectProject, onAddProject, onDeleteP
                   type="submit"
                   className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(79,70,229,0.4)]"
                 >
-                  Создать проект
+                  {editingProject ? 'Сохранить изменения' : 'Создать проект'}
                 </button>
               </form>
             </motion.div>

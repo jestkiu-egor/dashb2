@@ -79,6 +79,18 @@ export const db = {
     await supabase.from('projects').delete().eq('id', id);
   },
 
+  async updateProject(id: string, updates: { name: string, description: string }): Promise<boolean> {
+    const { error } = await supabase
+      .from('projects')
+      .update(updates)
+      .eq('id', id);
+    if (error) {
+      console.error('Ошибка обновления проекта:', error);
+      return false;
+    }
+    return true;
+  },
+
   async addProxy(projectId: string, proxy: Partial<Proxy>) {
     const { data, error } = await supabase
       .from('proxies')
@@ -129,6 +141,7 @@ export const db = {
       name: k.name,
       key: k.key_value,
       usageLocation: k.usage_location,
+      comment: k.comment,
       expiresAt: k.expires_at ? new Date(k.expires_at) : new Date(),
       last_status: k.last_status,
       last_check_at: k.last_check_at
@@ -136,8 +149,26 @@ export const db = {
   },
 
   async addApiKey(projectId: string, keyData: Partial<ApiKey>) {
-    const { data } = await supabase.from('api_keys').insert([{ project_id: projectId, name: keyData.name, key_value: keyData.key, usage_location: keyData.usageLocation }]).select().single();
+    const { data } = await supabase.from('api_keys').insert([{ 
+      project_id: projectId, 
+      name: keyData.name, 
+      key_value: keyData.key, 
+      usage_location: keyData.usageLocation,
+      comment: keyData.comment
+    }]).select().single();
     return data;
+  },
+
+  async updateApiKey(id: string, updates: Partial<ApiKey>) {
+    const { error } = await supabase
+      .from('api_keys')
+      .update({
+        comment: updates.comment,
+        usage_location: updates.usageLocation,
+        name: updates.name
+      })
+      .eq('id', id);
+    if (error) console.error('Ошибка обновления API ключа:', error);
   },
 
   async deleteApiKey(id: string) {

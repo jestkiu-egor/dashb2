@@ -47,9 +47,17 @@ export default function App() {
     }
   };
 
-  const handleUpdateProject = (updatedProject: Project) => {
-    setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
-    if (selectedProject?.id === updatedProject.id) setSelectedProject(updatedProject);
+  const handleUpdateProject = async (updatedProject: Project) => {
+    const success = await db.updateProject(updatedProject.id, { 
+      name: updatedProject.name, 
+      description: updatedProject.description || '' 
+    });
+    if (success) {
+      setProjects(prev => prev.map(p => p.id === updatedProject.id ? { ...p, name: updatedProject.name, description: updatedProject.description } : p));
+      if (selectedProject?.id === updatedProject.id) {
+        setSelectedProject(prev => prev ? { ...prev, name: updatedProject.name, description: updatedProject.description } : null);
+      }
+    }
   };
 
   const handleUpdateTasks = (projectId: string, tasks: Task[]) => {
@@ -100,6 +108,7 @@ export default function App() {
             onSelectProject={setSelectedProject}
             onAddProject={handleAddProject}
             onDeleteProject={handleDeleteProject}
+            onUpdateProject={handleUpdateProject}
           />
         );
       case 'finance':

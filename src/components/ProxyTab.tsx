@@ -10,7 +10,9 @@ import {
   Key as KeyIcon,
   ClipboardCheck,
   Timer,
-  Clock
+  Clock,
+  Wallet,
+  Coins
 } from 'lucide-react';
 import { Project, Proxy } from '../types';
 import { differenceInDays, isValid, startOfDay } from 'date-fns';
@@ -29,6 +31,9 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [checkFrequency, setCheckFrequency] = useState(12);
+  const [balance, setBalance] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<string | null>(null);
+  
   const [newProxy, setNewProxy] = useState<Partial<Proxy>>({
     type: 'HTTPS',
     ip: '',
@@ -42,7 +47,10 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   useEffect(() => {
     async function loadSettings() {
       const key = await db.getSetting(project.id, 'px6_api_key');
-      if (key) setApiKey(key);
+      if (key) {
+        setApiKey(key);
+        silentUpdate(key);
+      }
     }
     loadSettings();
 
@@ -53,6 +61,19 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
     return () => clearInterval(checkIntervalRef.current);
   }, [project.id, checkFrequency]);
+
+  const silentUpdate = async (key: string) => {
+    try {
+      const targetUrl = `https://px6.link/api/${key}/getproxy?_t=${Date.now()}`;
+      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      if (data.status === 'yes') {
+        setBalance(data.balance);
+        setCurrency(data.currency);
+      }
+    } catch (e) {}
+  };
 
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
@@ -79,22 +100,28 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   };
 
   const getStatusColor = (days: number) => {
-    if (days <= 0) return 'text-rose-500 bg-rose-500/10 border-rose-500/20';
-    if (days < 3) return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
-    if (days < 7) return 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20';
-    return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
+    if (days <= 0) return 'text-rose-500';
+    if (days < 3) return 'text-orange-400';
+    if (days < 7) return 'text-yellow-400';
+    return 'text-emerald-400';
   };
 
   const fetchProxyInfo = async () => {
     if (!apiKey) return;
     setIsLoading(true);
     try {
-      const proxyUrl = 'https://corsproxy.io/?';
-      const apiUrl = encodeURIComponent(`https://px6.link/api/${apiKey}/getproxy`);
-      const response = await fetch(proxyUrl + apiUrl);
+      const targetUrl = `https://px6.link/api/${apiKey}/getproxy?_t=${Date.now()}`;
+      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+      
       const data = await response.json();
 
       if (data.status === 'yes' && data.list) {
+        setBalance(data.balance);
+        setCurrency(data.currency);
+        
         const rawList = Object.values(data.list);
         const currentProjects = await db.fetchProjects();
         const currentProject = currentProjects.find(p => p.id === project.id);
@@ -123,10 +150,13 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
         const refreshed = await db.fetchProjects();
         const refreshedProj = refreshed.find(p => p.id === project.id);
         if (refreshedProj) onUpdateProxies(refreshedProj.proxies);
-        alert('✅ Синхронизация завершена');
+        alert(`✅ Готово!\nБаланс: ${data.balance} ${data.currency}`);
+      } else {
+        alert(`Ошибка API: ${data.error || 'Неверный ответ'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert('Ошибка при синхронизации.');
     } finally {
       setIsLoading(false);
     }
@@ -161,184 +191,185 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
 
   return (
     <div className="space-y-6">
-      <div className="bg-slate-900/60 border border-white/10 p-6 rounded-[32px] backdrop-blur-2xl space-y-6 shadow-2xl">
-        <div className="flex flex-wrap items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-indigo-500/20 rounded-[20px] flex items-center justify-center text-indigo-400 border border-indigo-500/20 shadow-inner">
-              <KeyIcon size={28} />
+      <div className="bg-slate-900/60 border border-white/10 p-8 rounded-[32px] backdrop-blur-2xl space-y-8 shadow-2xl relative overflow-hidden">
+        {/* Декоративный фон для баланса */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 blur-[100px] rounded-full -mr-32 -mt-32" />
+        
+        <div className="flex flex-wrap items-start justify-between gap-8 relative z-10">
+          <div className="flex items-center gap-5">
+            <div className="w-16 h-16 bg-indigo-500/20 rounded-[22px] flex items-center justify-center text-indigo-400 border border-indigo-500/20 shadow-inner">
+              <KeyIcon size={32} />
             </div>
             <div>
               <h3 className="text-white font-bold text-2xl tracking-tight">API Интеграция</h3>
-              <p className="text-slate-400 text-sm">Синхронизация данных с px6.link</p>
+              <p className="text-slate-400 text-sm mt-1">Управление и синхронизация с px6.link</p>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3 bg-slate-950/50 px-6 py-3 rounded-2xl border border-white/5 group hover:border-indigo-500/30 transition-all">
-              <Timer size={20} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+          <div className="flex flex-wrap items-center gap-4">
+            {/* ВИДЖЕТ БАЛАНСА */}
+            <AnimatePresence>
+              {balance !== null && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.9, x: 20 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-4 shadow-lg shadow-emerald-500/5"
+                >
+                  <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
+                    <Coins size={20} />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-emerald-500/60 font-bold uppercase tracking-[0.1em]">Ваш баланс</span>
+                    <span className="text-xl font-black text-emerald-400 leading-none mt-1">{balance} <span className="text-xs font-bold opacity-60 uppercase">{currency}</span></span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="flex items-center gap-3 bg-slate-950/50 px-5 py-3 rounded-2xl border border-white/5">
+              <Timer size={18} className="text-indigo-400" />
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Авто-опрос</span>
+                <span className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">Опрос</span>
                 <div className="flex items-center gap-1">
-                  <input 
-                    type="number" 
-                    value={checkFrequency}
-                    onChange={(e) => setCheckFrequency(parseInt(e.target.value) || 1)}
-                    className="bg-transparent text-white font-bold outline-none w-10 text-sm"
-                  />
-                  <span className="text-[10px] text-slate-600 font-bold uppercase">часов</span>
+                  <input type="number" value={checkFrequency} onChange={(e) => setCheckFrequency(parseInt(e.target.value) || 1)} className="bg-transparent text-white font-bold outline-none w-8 text-xs" />
+                  <span className="text-[9px] text-slate-600 font-bold uppercase">ч</span>
                 </div>
               </div>
             </div>
+
             <button 
-              onClick={fetchProxyInfo}
-              disabled={isLoading || !apiKey}
+              onClick={fetchProxyInfo} 
+              disabled={isLoading || !apiKey} 
               className={cn(
-                "p-4 px-6 rounded-2xl border transition-all flex items-center gap-3 font-bold text-xs uppercase tracking-widest shadow-lg",
-                isLoading ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-400" : "bg-white/5 border-white/10 text-slate-300 hover:text-white hover:bg-white/10"
+                "p-4 px-8 rounded-2xl border transition-all font-bold text-xs uppercase tracking-[0.15em] flex items-center gap-3 shadow-xl",
+                isLoading ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-400" : "bg-indigo-600 border-indigo-500 text-white hover:bg-indigo-500 hover:scale-[1.02] active:scale-[0.98]"
               )}
             >
-              <RefreshCw size={20} className={cn(isLoading && "animate-spin")} />
-              {isLoading ? 'Синхронизация...' : 'Обновить сейчас'}
+              <RefreshCw size={18} className={cn(isLoading && "animate-spin")} />
+              <span>{isLoading ? '...' : 'Обновить'}</span>
             </button>
           </div>
         </div>
         
-        <div className="flex gap-4">
-          <input 
-            type="password" 
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Введите секретный API ключ..."
-            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-600 font-mono text-sm shadow-inner"
-          />
-          <button 
-            onClick={saveApiKey}
-            disabled={isLoading}
-            className="px-10 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-600/30 flex items-center gap-3 disabled:opacity-50"
-          >
-            <Save size={20} />
-            Сохранить
+        <div className="flex gap-4 relative z-10">
+          <div className="relative flex-1">
+            <input 
+              type="password" 
+              value={apiKey} 
+              onChange={(e) => setApiKey(e.target.value)} 
+              placeholder="Введите секретный API ключ для px6.link..." 
+              className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500/50 font-mono text-sm shadow-inner transition-all" 
+            />
+          </div>
+          <button onClick={saveApiKey} disabled={isLoading} className="px-10 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-bold hover:bg-white/10 transition-all flex items-center gap-3 active:scale-95">
+            <Save size={20} className="text-indigo-400" />
+            <span>Сохранить ключ</span>
           </button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-2">
-        <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-          <Globe size={24} className="text-indigo-400" />
-          Список прокси
-        </h2>
-        <button 
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 rounded-2xl font-bold hover:bg-indigo-600 hover:text-white transition-all shadow-lg"
-        >
-          <Plus size={20} />
-          <span>Добавить вручную</span>
-        </button>
-      </div>
+      <div className="bg-slate-900/40 border border-white/10 rounded-[32px] overflow-hidden backdrop-blur-xl shadow-lg">
+        <div className="flex items-center justify-between p-6 border-b border-white/5 bg-white/[0.01]">
+          <h2 className="text-xl font-bold text-white flex items-center gap-3 uppercase tracking-tight">
+            <Globe size={20} className="text-indigo-400" />
+            Список активных прокси
+          </h2>
+          <button onClick={() => setShowAddForm(!showAddForm)} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-xl font-bold hover:bg-indigo-600 hover:text-white transition-all text-xs uppercase tracking-widest">
+            <Plus size={16} />
+            <span>Добавить</span>
+          </button>
+        </div>
 
-      {showAddForm && (
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-slate-900/60 border border-white/10 p-6 rounded-3xl backdrop-blur-xl grid grid-cols-1 md:grid-cols-3 gap-4 shadow-2xl">
-          <input placeholder="IP Адрес" className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white" value={newProxy.ip} onChange={e => setNewProxy({...newProxy, ip: e.target.value})} />
-          <input placeholder="Порт" className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white" value={newProxy.port} onChange={e => setNewProxy({...newProxy, port: e.target.value})} />
-          <select className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none" value={newProxy.type} onChange={e => setNewProxy({...newProxy, type: e.target.value as any})}>
-            <option value="HTTPS" className="bg-slate-900">HTTPS</option>
-            <option value="SOCKS5" className="bg-slate-900">SOCKS5</option>
-          </select>
-          <input placeholder="Логин" className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white" value={newProxy.login} onChange={e => setNewProxy({...newProxy, login: e.target.value})} />
-          <input placeholder="Пароль" className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white" value={newProxy.passwordHash} onChange={e => setNewProxy({...newProxy, passwordHash: e.target.value})} />
-          <button onClick={handleAddProxy} className="bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-500 shadow-xl shadow-indigo-600/30 transition-all py-3">Добавить в базу</button>
-        </motion.div>
-      )}
-
-      <div className="grid grid-cols-1 gap-4">
-        {(project.proxies || []).map((proxy) => {
-          const daysLeft = getDaysLeft(proxy.expiresAt);
-          const fullString = `${proxy.ip}:${proxy.port}:${proxy.login}:${proxy.passwordHash}`;
-          
-          return (
-            <div key={proxy.id} className="bg-slate-900/40 border border-white/10 p-6 rounded-3xl backdrop-blur-xl flex flex-wrap items-center justify-between gap-6 group hover:border-indigo-500/30 transition-all shadow-lg hover:shadow-indigo-500/5">
-              <div className="flex items-center gap-6 min-w-[400px]">
-                <div className={cn(
-                  "w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-inner border",
-                  daysLeft <= 0 ? "bg-rose-500/10 text-rose-500 border-rose-500/20" : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                )}>
-                  <Globe size={28} />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Host</span>
-                    <button onClick={() => {handleCopy(proxy.ip, 'ip'); setCopiedId(`ip-${proxy.id}`);}} className="text-white font-mono font-bold hover:text-indigo-400 transition-colors flex items-center gap-2">
-                      {proxy.ip}
-                      <Copy size={12} className={cn("transition-opacity", copiedId === `ip-${proxy.id}` ? "opacity-100 text-emerald-400" : "opacity-0 group-hover:opacity-100")} />
-                    </button>
-                    <span className="text-slate-700">:</span>
-                    <button onClick={() => {handleCopy(proxy.port, 'port'); setCopiedId(`p-${proxy.id}`);}} className="text-indigo-100 font-mono hover:text-indigo-400 transition-colors flex items-center gap-2">
-                      {proxy.port}
-                      <Copy size={12} className={cn("transition-opacity", copiedId === `p-${proxy.id}` ? "opacity-100 text-emerald-400" : "opacity-0 group-hover:opacity-100")} />
-                    </button>
-                    <span className="px-2.5 py-0.5 bg-white/5 text-slate-400 text-[10px] font-bold rounded-lg border border-white/5">{proxy.type}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-6 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[10px] font-bold uppercase">User:</span>
-                      <button onClick={() => {handleCopy(proxy.login, 'u'); setCopiedId(`u-${proxy.id}`);}} className="text-orange-400/80 font-mono hover:text-orange-300 transition-colors flex items-center gap-2">
-                        {proxy.login}
-                        <Copy size={12} className={cn("transition-opacity", copiedId === `u-${proxy.id}` ? "opacity-100 text-emerald-400" : "opacity-0 group-hover:opacity-100")} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-500 text-[10px] font-bold uppercase">Pass:</span>
-                      <button onClick={() => {handleCopy(proxy.passwordHash, 'pw'); setCopiedId(`pw-${proxy.id}`);}} className="text-slate-300 font-mono hover:text-indigo-400 transition-colors flex items-center gap-2">
-                        {proxy.passwordHash}
-                        <Copy size={12} className={cn("transition-opacity", copiedId === `pw-${proxy.id}` ? "opacity-100 text-emerald-400" : "opacity-0 group-hover:opacity-100")} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-8">
-                <div className="text-right">
-                  <div className="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-1">Осталось</div>
-                  <div className={cn("flex items-center gap-2 text-base font-bold", getStatusColor(daysLeft))}>
-                    <Clock size={18} />
-                    {daysLeft}д
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3 border-l border-white/5 pl-6">
-                  {/* Кнопка "КОПИРОВАТЬ ВСЁ" */}
-                  <button 
-                    onClick={() => {handleCopy(fullString, 'all'); setCopiedId(`all-${proxy.id}`);}}
-                    className={cn(
-                      "flex items-center gap-3 px-6 py-3 rounded-2xl text-xs font-bold transition-all border shadow-lg group/all",
-                      copiedId === `all-${proxy.id}` 
-                        ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-emerald-500/10" 
-                        : "bg-indigo-600/10 border-indigo-500/20 text-indigo-400 hover:bg-indigo-600 hover:text-white"
-                    )}
-                  >
-                    {copiedId === `all-${proxy.id}` ? <ClipboardCheck size={20} /> : <Copy size={20} className="group-hover/all:scale-110 transition-transform" />}
-                    <div className="flex flex-col items-start leading-tight">
-                      <span className="uppercase tracking-tighter">{copiedId === `all-${proxy.id}` ? 'Скопировано' : 'Копировать'}</span>
-                      <span className="text-[9px] opacity-60 font-normal">IP:PORT:USER:PASS</span>
-                    </div>
-                  </button>
-                  
-                  <button onClick={() => handleDeleteProxy(proxy.id)} className="p-3 text-slate-600 hover:text-rose-400 hover:bg-rose-400/10 rounded-2xl transition-all">
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {(!project.proxies || project.proxies.length === 0) && (
-          <div className="text-center py-24 bg-slate-900/20 border border-dashed border-white/10 rounded-[40px]">
-            <Globe size={64} className="mx-auto text-slate-800 mb-6" />
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-sm">Прокси отсутствуют</p>
+        {showAddForm && (
+          <div className="p-6 bg-slate-950/50 border-b border-white/5 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 animate-in fade-in slide-in-from-top-4">
+            <input placeholder="IP" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm" value={newProxy.ip} onChange={e => setNewProxy({...newProxy, ip: e.target.value})} />
+            <input placeholder="Порт" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm" value={newProxy.port} onChange={e => setNewProxy({...newProxy, port: e.target.value})} />
+            <select className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm outline-none" value={newProxy.type} onChange={e => setNewProxy({...newProxy, type: e.target.value as any})}>
+              <option value="HTTPS" className="bg-slate-900">HTTPS</option>
+              <option value="SOCKS5" className="bg-slate-900">SOCKS5</option>
+            </select>
+            <input placeholder="Логин" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm" value={newProxy.login} onChange={e => setNewProxy({...newProxy, login: e.target.value})} />
+            <input placeholder="Пароль" className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm" value={newProxy.passwordHash} onChange={e => setNewProxy({...newProxy, passwordHash: e.target.value})} />
+            <button onClick={handleAddProxy} className="bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-500 text-xs py-2 uppercase">Создать</button>
           </div>
         )}
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/[0.02]">
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Адрес / Host</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest">Авторизация</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Тип</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">Срок</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest text-right">Действия</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.03]">
+              {(project.proxies || []).map((proxy) => {
+                const daysLeft = getDaysLeft(proxy.expiresAt);
+                const fullString = `${proxy.ip}:${proxy.port}:${proxy.login}:${proxy.passwordHash}`;
+                
+                return (
+                  <tr key={proxy.id} className="hover:bg-white/[0.02] transition-colors group">
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-2 h-2 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.5)]", daysLeft <= 0 ? "bg-rose-500 shadow-rose-500/40" : "bg-emerald-500 shadow-emerald-500/40")} />
+                        <div className="flex items-center font-mono text-xs font-bold text-white">
+                          <button onClick={() => {handleCopy(proxy.ip, 'ip'); setCopiedId(`ip-${proxy.id}`);}} className="hover:text-indigo-400 transition-colors">{proxy.ip}</button>
+                          <span className="mx-1 text-slate-600">:</span>
+                          <button onClick={() => {handleCopy(proxy.port, 'port'); setCopiedId(`p-${proxy.id}`);}} className="hover:text-indigo-400 transition-colors">{proxy.port}</button>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-4 text-[11px] font-mono">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-600 font-bold uppercase text-[9px]">U:</span>
+                          <button onClick={() => {handleCopy(proxy.login, 'u'); setCopiedId(`u-${proxy.id}`);}} className="text-orange-400/80 hover:text-orange-300 transition-colors">{proxy.login}</button>
+                        </div>
+                        <div className="flex items-center gap-1.5 border-l border-white/10 pl-4">
+                          <span className="text-slate-600 font-bold uppercase text-[9px]">P:</span>
+                          <button onClick={() => {handleCopy(proxy.passwordHash, 'pw'); setCopiedId(`pw-${proxy.id}`);}} className="text-slate-400 hover:text-white transition-colors">{proxy.passwordHash}</button>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-center text-[10px]">
+                      <span className="bg-white/5 border border-white/5 text-slate-500 px-2 py-0.5 rounded-md font-bold">{proxy.type}</span>
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      <div className={cn("text-xs font-bold font-mono", getStatusColor(daysLeft))}>
+                        {daysLeft}д
+                      </div>
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => {handleCopy(fullString, 'all'); setCopiedId(`all-${proxy.id}`);}}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all border",
+                            copiedId?.startsWith('all') ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "bg-white/5 border-white/10 text-slate-500 hover:text-white hover:bg-indigo-600 hover:border-indigo-500"
+                          )}
+                        >
+                          {copiedId?.startsWith('all') ? <ClipboardCheck size={14} /> : <Copy size={14} />}
+                          <span>{copiedId?.startsWith('all') ? 'OK' : 'ВСЁ'}</span>
+                        </button>
+                        <button onClick={() => handleDeleteProxy(proxy.id)} className="p-2 text-slate-700 hover:text-rose-400 transition-colors">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {(!project.proxies || project.proxies.length === 0) && (
+            <div className="text-center py-20 text-slate-600 uppercase text-[10px] font-bold tracking-[0.2em]">
+              Данные отсутствуют
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

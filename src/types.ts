@@ -39,6 +39,7 @@ export interface ApiKey {
   name: string;
   key: string;
   usageLocation: string;
+  comment?: string;
   expiresAt: Date;
   last_status?: 'ok' | 'error' | 'unknown';
   last_check_at?: Date | string;
