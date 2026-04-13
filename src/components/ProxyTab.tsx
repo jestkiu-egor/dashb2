@@ -192,7 +192,6 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   return (
     <div className="space-y-6">
       <div className="bg-slate-900/60 border border-white/10 p-8 rounded-[32px] backdrop-blur-2xl space-y-8 shadow-2xl relative overflow-hidden">
-        {/* Декоративный фон для баланса */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 blur-[100px] rounded-full -mr-32 -mt-32" />
         
         <div className="flex flex-wrap items-start justify-between gap-8 relative z-10">
@@ -201,30 +200,24 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
               <KeyIcon size={32} />
             </div>
             <div>
-              <h3 className="text-white font-bold text-2xl tracking-tight">API Интеграция</h3>
-              <p className="text-slate-400 text-sm mt-1">Управление и синхронизация с px6.link</p>
+              <h3 className="text-white font-bold text-2xl tracking-tight uppercase tracking-widest">Proxy Интеграция</h3>
+              <p className="text-slate-400 text-sm mt-1">Авто-синхронизация с сервисом px6.link</p>
             </div>
           </div>
           
           <div className="flex flex-wrap items-center gap-4">
-            {/* ВИДЖЕТ БАЛАНСА */}
-            <AnimatePresence>
-              {balance !== null && (
-                <motion.div 
-                  initial={{ opacity: 0, scale: 0.9, x: 20 }}
-                  animate={{ opacity: 1, scale: 1, x: 0 }}
-                  className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-4 shadow-lg shadow-emerald-500/5"
-                >
-                  <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
-                    <Coins size={20} />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-emerald-500/60 font-bold uppercase tracking-[0.1em]">Ваш баланс</span>
-                    <span className="text-xl font-black text-emerald-400 leading-none mt-1">{balance} <span className="text-xs font-bold opacity-60 uppercase">{currency}</span></span>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* УЛУЧШЕННЫЙ ВИДЖЕТ БАЛАНСА (Виден всегда, если есть данные) */}
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-4 shadow-lg shadow-emerald-500/5 min-w-[180px]">
+              <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
+                <Coins size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-emerald-500/60 font-bold uppercase tracking-[0.1em]">Ваш баланс</span>
+                <span className="text-xl font-black text-emerald-400 leading-none mt-1">
+                  {balance || '0.00'} <span className="text-xs font-bold opacity-60 uppercase">{currency || 'RUB'}</span>
+                </span>
+              </div>
+            </div>
 
             <div className="flex items-center gap-3 bg-slate-950/50 px-5 py-3 rounded-2xl border border-white/5">
               <Timer size={18} className="text-indigo-400" />
@@ -348,7 +341,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
                           onClick={() => {handleCopy(fullString, 'all'); setCopiedId(`all-${proxy.id}`);}}
                           className={cn(
                             "flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all border",
-                            copiedId?.startsWith('all') ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "bg-white/5 border-white/10 text-slate-500 hover:text-white hover:bg-indigo-600 hover:border-indigo-500"
+                            copiedId?.startsWith('all') ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "bg-white/5 border-white/5 text-slate-500 hover:text-white hover:bg-indigo-600 hover:border-indigo-500"
                           )}
                         >
                           {copiedId?.startsWith('all') ? <ClipboardCheck size={14} /> : <Copy size={14} />}
