@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Home, Wallet, ListTodo, ChevronRight, ChevronLeft, ChevronDown, LayoutDashboard, Folder, Check } from 'lucide-react';
+import { Home, Wallet, ListTodo, ChevronRight, ChevronLeft, ChevronDown, LayoutDashboard, Folder, Check, Bot, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { Project } from '../types';
@@ -10,6 +10,7 @@ interface SidebarProps {
   projects: Project[];
   selectedProjectId: string | null;
   onSelectProject: (projectId: string | null) => void;
+  onOpenAssistant?: () => void;
 }
 
 export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, onSelectProject }: SidebarProps) => {
@@ -20,6 +21,7 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
     { id: 'home', label: 'Главная', icon: Home },
     { id: 'finance', label: 'Финансы', icon: Wallet },
     { id: 'backlog', label: 'Задачи', icon: ListTodo },
+    { id: 'assistant', label: 'Ассистент', icon: Bot },
   ];
 
   const handleBacklogClick = () => {
@@ -62,11 +64,12 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
           const Icon = item.icon;
           const isActive = activeTab === item.id;
           const isBacklog = item.id === 'backlog';
+          const isAssistant = item.id === 'assistant';
 
           return (
             <div key={item.id}>
               <button
-                onClick={isBacklog ? handleBacklogClick : () => { setActiveTab(item.id); setIsProjectsOpen(false); }}
+                onClick={isBacklog ? handleBacklogClick : isAssistant ? () => { if (onOpenAssistant) onOpenAssistant(); } : () => { setActiveTab(item.id); setIsProjectsOpen(false); }}
                 className={cn(
                   "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative",
                   isActive 
@@ -74,7 +77,7 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
                     : "text-slate-400 hover:text-white hover:bg-white/5"
                 )}
               >
-                <Icon size={20} className={cn("transition-transform duration-300", isActive && "scale-110")} />
+                <Icon size={20} className={cn("transition-transform duration-300", isActive && "scale-110", isAssistant && "text-purple-400")} />
                 {!isCollapsed && (
                   <motion.span
                     initial={{ opacity: 0, x: -10 }}
