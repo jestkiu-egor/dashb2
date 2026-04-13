@@ -16,6 +16,7 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -240,10 +241,10 @@ function SortableTaskCard({ task, column, onClick }: { task: Task; column: Colum
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: task.id, data: { type: 'task' } });
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
     transition: transition || 'transform 150ms ease',
   };
 
@@ -254,7 +255,7 @@ function SortableTaskCard({ task, column, onClick }: { task: Task; column: Colum
       layout
       initial={false}
       animate={isDragging 
-        ? { opacity: 0, scale: 0.95 } 
+        ? { opacity: 0.5, scale: 1.02, boxShadow: "0 10px 40px rgba(99, 102, 241, 0.3)" } 
         : { opacity: 1, scale: 1, boxShadow: "none" }}
       className={cn(isDragging && "z-50 cursor-grabbing")}
       {...attributes}
@@ -287,11 +288,17 @@ function SortableColumn({ column, tasks, onEdit, onDelete, onAddTask, onTaskClic
     isDragging,
   } = useSortable({ id: `column-${column.id}`, data: { type: 'column' } });
 
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition: transition || 'transform 150ms ease',
+  };
+
   const totalAmount = tasks.reduce((sum, t) => sum + (t.amount || 0), 0);
 
   return (
     <motion.div 
       ref={setNodeRef}
+      style={style}
       layout
       animate={isDragging ? { scale: 1.02, boxShadow: "0 20px 60px rgba(0,0,0,0.4)" } : { scale: 1, boxShadow: "none" }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
@@ -299,7 +306,7 @@ function SortableColumn({ column, tasks, onEdit, onDelete, onAddTask, onTaskClic
       onDragLeave={onDragLeave}
       className={cn(
         "flex-shrink-0 w-72 flex flex-col bg-white/[0.02] rounded-2xl p-3 border transition-colors",
-        isDragging ? "z-50 opacity-90 border-indigo-500/50" : "border-white/[0.05]",
+        isDragging ? "z-50 opacity-90 border-indigo-500/50 cursor-grabbing" : "border-white/[0.05]",
         isOver && "border-indigo-500/50 bg-indigo-500/5"
       )}
     >
@@ -308,7 +315,8 @@ function SortableColumn({ column, tasks, onEdit, onDelete, onAddTask, onTaskClic
           <div 
             {...attributes} 
             {...listeners} 
-            className="cursor-grab active:cursor-grabbing p-1 text-slate-600 hover:text-slate-400 touch-none"
+            className="cursor-grab active:cursor-grabbing p-1 text-slate-600 hover:text-slate-400 touch-none select-none"
+            onClick={(e) => e.stopPropagation()}
           >
             <GripVertical size={14} />
           </div>
@@ -736,38 +744,51 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
           onDragEnd={handleDragEnd}
         >
           <div className="flex gap-4 overflow-x-auto pb-4 flex-1 custom-scrollbar">
-            {columns.map((column) => {
-              const baseTasks = filteredTasks.filter(t => t.status === column.id);
-              const columnTasks = kanbanSearchQuery 
-                ? baseTasks.filter(t => 
-                    t.title.toLowerCase().includes(kanbanSearchQuery.toLowerCase()) ||
-                    t.description?.toLowerCase().includes(kanbanSearchQuery.toLowerCase()) ||
-                    t.assignee?.toLowerCase().includes(kanbanSearchQuery.toLowerCase())
-                  )
-                : baseTasks;
-              return (
-                <SortableColumn
-                  key={column.id}
-                  column={column}
-                  tasks={columnTasks}
-                  onEdit={(label) => handleEditColumn(column.id, label)}
-                  onDelete={() => handleDeleteColumn(column.id)}
-                  onAddTask={() => {
-                    setNewTaskStatus(column.id);
-                    setIsAddTaskModalOpen(true);
-                  }}
-                  onTaskClick={handleTaskClick}
-                  onDragOver={() => setOverColumnId(column.id)}
-                  onDragLeave={() => setOverColumnId(null)}
-                  isOver={overColumnId === column.id}
-                />
-              );
-            })}
+            <SortableContext items={columns.map(c => `column-${c.id}`)} strategy={horizontalListSortingStrategy}>
+              {columns.map((column) => {
+                const baseTasks = filteredTasks.filter(t => t.status === column.id);
+                const columnTasks = kanbanSearchQuery 
+                  ? baseTasks.filter(t => 
+                      t.title.toLowerCase().includes(kanbanSearchQuery.toLowerCase()) ||
+                      t.description?.toLowerCase().includes(kanbanSearchQuery.toLowerCase()) ||
+                      t.assignee?.toLowerCase().includes(kanbanSearchQuery.toLowerCase())
+                    )
+                  : baseTasks;
+                return (
+                  <SortableColumn
+                    key={column.id}
+                    column={column}
+                    tasks={columnTasks}
+                    onEdit={(label) => handleEditColumn(column.id, label)}
+                    onDelete={() => handleDeleteColumn(column.id)}
+                    onAddTask={() => {
+                      setNewTaskStatus(column.id);
+                      setIsAddTaskModalOpen(true);
+                    }}
+                    onTaskClick={handleTaskClick}
+                    onDragOver={() => setOverColumnId(column.id)}
+                    onDragLeave={() => setOverColumnId(null)}
+                    isOver={overColumnId === column.id}
+                  />
+                );
+              })}
+            </SortableContext>
           </div>
 
           <DragOverlay>
+            {activeId && activeId.startsWith('column-') && (
+              <div className="bg-slate-900/90 border border-indigo-500/50 rounded-2xl p-3 shadow-2xl w-72 opacity-90">
+                <div className="flex items-center gap-2">
+                  <GripVertical size={14} className="text-slate-400" />
+                  <div className={cn("w-2 h-2 rounded-full", columns.find(c => c.id === activeId.replace('column-', ''))?.color)} />
+                  <span className="text-white font-bold uppercase text-xs">
+                    {columns.find(c => c.id === activeId.replace('column-', ''))?.label}
+                  </span>
+                </div>
+              </div>
+            )}
             {activeTask && (
-              <div className="bg-slate-900/90 border border-indigo-500/50 p-4 rounded-xl shadow-2xl w-72 opacity-90">
+              <div className="bg-slate-900/90 border border-indigo-500/50 p-4 rounded-xl shadow-2xl w-72 opacity-90 cursor-grabbing">
                 <h4 className="text-white font-medium text-sm">{activeTask.title}</h4>
               </div>
             )}
