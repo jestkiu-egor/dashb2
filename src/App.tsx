@@ -89,7 +89,7 @@ export default function App() {
           />
         );
       case 'assistant':
-        return <AssistantPage isOpen={isAssistantOpen} />;
+        return <AssistantPage isOpen={activeTab === 'assistant' || isAssistantOpen} />;
       default:
         return <div className="p-8 text-white">Tab not found</div>;
     }

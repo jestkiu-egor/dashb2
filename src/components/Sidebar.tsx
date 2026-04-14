@@ -22,7 +22,7 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
     { id: 'home', label: 'Главная', icon: Home },
     { id: 'finance', label: 'Финансы', icon: Wallet },
     { id: 'backlog', label: 'Задачи', icon: ListTodo },
-    { id: 'integrations', label: 'Интеграции', icon: Bot, hasSubmenu: true },
+    { id: 'assistant', label: 'Интеграции', icon: Bot, hasSubmenu: true },
   ];
 
   const integrationItems = [
@@ -39,12 +39,8 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
   };
 
   const handleIntegrationsClick = () => {
-    if (activeTab === 'integrations') {
-      setIsIntegrationsOpen(!isIntegrationsOpen);
-    } else {
-      setActiveTab('integrations');
-      setIsIntegrationsOpen(true);
-    }
+    setActiveTab('assistant');
+    setIsIntegrationsOpen(true);
   };
 
   return (
@@ -76,10 +72,9 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
       <nav className="flex-1 px-3 py-2 flex flex-col gap-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive = activeTab === item.id || (item.id === 'assistant' && activeTab === 'assistant');
           const isBacklog = item.id === 'backlog';
-          const isIntegrations = item.id === 'integrations';
-          const isAssistant = item.id === 'assistant';
+          const isIntegrations = item.id === 'assistant';
           const hasSubmenu = item.hasSubmenu;
 
           return (
@@ -87,9 +82,9 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
               <button
                 onClick={isBacklog ? handleBacklogClick : isIntegrations ? handleIntegrationsClick : () => { setActiveTab(item.id); setIsProjectsOpen(false); setIsIntegrationsOpen(false); }}
                 className={cn(
-                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative",
+                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative outline-none",
                   isActive 
-                    ? "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30" 
+                    ? "bg-purple-600/20 text-purple-400 border border-purple-500/30" 
                     : isIntegrations
                     ? "bg-purple-600/10 text-purple-400 border border-purple-500/20 hover:bg-purple-600/20"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
@@ -181,16 +176,10 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
                           <button
                             key={subItem.id}
                             onClick={() => { setActiveTab(subItem.id); if (onOpenAssistant) onOpenAssistant(); setIsIntegrationsOpen(false); }}
-                            className={cn(
-                              "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all",
-                              isSubActive 
-                                ? "bg-purple-600/20 text-purple-400" 
-                                : "text-slate-400 hover:bg-white/5 hover:text-white"
-                            )}
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all outline-none text-slate-400 hover:bg-white/5 hover:text-white"
                           >
                             <SubIcon size={14} />
-                            <span>{subItem.label}</span>
-                            {isSubActive && <Check size={14} className="ml-auto" />}
+                            <span>Ассистент</span>
                           </button>
                         );
                       })}

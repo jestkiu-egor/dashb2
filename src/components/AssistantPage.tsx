@@ -141,24 +141,6 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     }
   };
 
-  const handleImportProxyFromInput = () => {
-    // This will be triggered by the input field
-    const proxyInput = (document.getElementById('proxy-quick-input') as HTMLInputElement)?.value;
-    if (proxyInput) {
-      const parsed = parseProxyString(proxyInput);
-      if (parsed) {
-        setSettings({
-          ...settings,
-          proxy_host: parsed.host,
-          proxy_port: parsed.port,
-          proxy_login: parsed.login,
-          proxy_password: parsed.password,
-        });
-        setMessage('Прокси импортировано!');
-      }
-    }
-  };
-
   const checkApiKey = async () => {
     if (!settings.llm_api_key) {
       setKeyStatus('error');
@@ -169,22 +151,22 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     setKeyStatus(null);
     
     try {
-      const response = await fetch(settings.llm_api_url || 'https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
+      const apiUrl = settings.llm_api_url 
+        ? settings.llm_api_url.replace('/chat/completions', '/models')
+        : 'https://api.groq.com/openai/v1/models';
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${settings.llm_api_key}`,
-        },
-        body: JSON.stringify({
-          model: settings.llm_model || 'llama-3.1-8b-instant',
-          messages: [{ role: 'user', content: 'hi' }],
-          max_tokens: 5
-        })
+        }
       });
       
       if (response.ok) {
         setKeyStatus('ok');
       } else {
+        const errorText = await response.text();
+        console.error('API Key check failed:', response.status, errorText);
         setKeyStatus('error');
       }
     } catch (error) {
@@ -205,13 +187,13 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     setProxyStatus(null);
     
     try {
-      const proxyUrl = settings.proxy_login && settings.proxy_password
-        ? `http://${settings.proxy_login}:${settings.proxy_password}@${settings.proxy_host}:${settings.proxy_port}`
-        : `http://${settings.proxy_host}:${settings.proxy_port}`;
-      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
+      const proxyUrl = settings.proxy_login && settings.proxy_password
+        ? `http://${settings.proxy_login}:${settings.proxy_password}@${settings.proxy_host}:${settings.proxy_port}`
+        : `http://${settings.proxy_host}:${settings.proxy_port}`;
+
       const response = await fetch('https://api.groq.com/openai/v1/models', {
         method: 'GET',
         signal: controller.signal,
@@ -256,14 +238,6 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
       <div className="max-w-3xl mx-auto">
@@ -287,218 +261,233 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
           </button>
         </div>
 
-        {message && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={cn(
-              "mb-6 p-4 rounded-xl",
-              message.includes('Ошибка') 
-                ? "bg-red-500/20 text-red-400 border border-red-500/30" 
-                : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+        {isLoading ? (
+          <div className="space-y-6">
+            <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6 animate-pulse">
+              <div className="h-6 bg-white/10 rounded w-1/3 mb-4"></div>
+              <div className="space-y-4">
+                <div className="h-12 bg-white/5 rounded-xl"></div>
+                <div className="h-12 bg-white/5 rounded-xl"></div>
+                <div className="h-24 bg-white/5 rounded-xl"></div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {message && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  "mb-6 p-4 rounded-xl",
+                  message.includes('Ошибка') 
+                    ? "bg-red-500/20 text-red-400 border border-red-500/30" 
+                    : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                )}
+              >
+                {message}
+              </motion.div>
             )}
-          >
-            {message}
-          </motion.div>
-        )}
 
-        <div className="space-y-6">
-          <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
-            <h2 className="text-lg font-bold text-white mb-4">LLM Настройки</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="block text-sm font-bold text-slate-400 mb-2">API URL</label>
-                <input
-                  type="url"
-                  value={settings.llm_api_url}
-                  onChange={(e) => setSettings({ ...settings, llm_api_url: e.target.value })}
-                  placeholder="https://api.llm.example.com/v1/chat/completions"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-bold text-slate-400 mb-2">Модель</label>
-                <input
-                  type="text"
-                  value={settings.llm_model}
-                  onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}
-                  placeholder="llama-3.3-70b-versatile"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-bold text-slate-400 mb-2">API Key</label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={settings.llm_api_key}
-                    onChange={(e) => { setSettings({ ...settings, llm_api_key: e.target.value }); setKeyStatus(null); }}
-                    placeholder="gsk_..."
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={checkApiKey}
-                    disabled={isCheckingKey || !settings.llm_api_key}
-                    className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isCheckingKey ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : keyStatus === 'ok' ? (
-                      <span className="text-green-400">✓</span>
-                    ) : keyStatus === 'error' ? (
-                      <span className="text-red-400">✗</span>
-                    ) : (
-                      <span className="text-slate-400">Проверить</span>
-                    )}
-                  </button>
-                </div>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-bold text-slate-400 mb-2">Промпт для парсинга</label>
-                {isEditingPrompt ? (
-                  <div className="space-y-2">
-                    <textarea
-                      value={settings.llm_prompt}
-                      onChange={(e) => setSettings({ ...settings, llm_prompt: e.target.value })}
-                      placeholder="Промпт, который отправляется в LLM..."
-                      rows={4}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500 resize-none font-mono text-sm"
+            <div className="space-y-6">
+              <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
+                <h2 className="text-lg font-bold text-white mb-4">LLM Настройки</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 mb-2">API URL</label>
+                    <input
+                      type="url"
+                      value={settings.llm_api_url}
+                      onChange={(e) => setSettings({ ...settings, llm_api_url: e.target.value })}
+                      placeholder="https://api.llm.example.com/v1/chat/completions"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
                     />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Модель</label>
+                    <input
+                      type="text"
+                      value={settings.llm_model}
+                      onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}
+                      placeholder="llama-3.3-70b-versatile"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 mb-2">API Key</label>
                     <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={settings.llm_api_key}
+                        onChange={(e) => { setSettings({ ...settings, llm_api_key: e.target.value }); setKeyStatus(null); }}
+                        placeholder="gsk_..."
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                      />
                       <button
                         type="button"
-                        onClick={() => setIsEditingPrompt(false)}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold flex items-center gap-1"
+                        onClick={checkApiKey}
+                        disabled={isCheckingKey || !settings.llm_api_key}
+                        className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 disabled:opacity-50 flex items-center gap-2"
                       >
-                        <Check size={14} />
-                        Сохранить
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingPrompt(false)}
-                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-400 rounded-lg text-sm"
-                      >
-                        Отмена
+                        {isCheckingKey ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : keyStatus === 'ok' ? (
+                          <span className="text-green-400">✓</span>
+                        ) : keyStatus === 'error' ? (
+                          <span className="text-red-400">✗</span>
+                        ) : (
+                          <span className="text-slate-400">Проверить</span>
+                        )}
                       </button>
                     </div>
                   </div>
-                ) : (
-                  <div className="flex gap-2 items-start">
-                    <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-slate-300 text-sm font-mono max-h-24 overflow-y-auto">
-                      {settings.llm_prompt || 'Промпт не задан - будет использоваться стандартный:\nТы парсишь задачу. Верни JSON с полями: title, description, assignee, dueDate (YYYY-MM-DD), amount, priority (low/medium/high), externalUrl. Верни ТОЛЬКО валидный JSON без markdown.'}
-                    </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Промпт для парсинга</label>
+                    {isEditingPrompt ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={settings.llm_prompt}
+                          onChange={(e) => setSettings({ ...settings, llm_prompt: e.target.value })}
+                          placeholder="Промпт, который отправляется в LLM..."
+                          rows={4}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500 resize-none font-mono text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingPrompt(false)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-bold flex items-center gap-1"
+                          >
+                            <Check size={14} />
+                            Сохранить
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingPrompt(false)}
+                            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-slate-400 rounded-lg text-sm"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2 items-start">
+                        <div className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-slate-300 text-sm font-mono max-h-24 overflow-y-auto">
+                          {settings.llm_prompt || 'Промпт не задан - будет использоваться стандартный:\nТы парсишь задачу. Верни JSON с полями: title, description, assignee, dueDate (YYYY-MM-DD), amount, priority (low/medium/high), externalUrl. Верни ТОЛЬКО валидный JSON без markdown.'}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingPrompt(true)}
+                          className="p-3 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10"
+                          title="Редактировать промпт"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
+                <h2 className="text-lg font-bold text-white mb-4">Прокси</h2>
+                
+                <div className="mb-4 p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
+                  <label className="block text-sm font-bold text-indigo-400 mb-2">Быстрая вставка proxy</label>
+                  <div className="flex gap-2">
+                    <input
+                      id="proxy-quick-input"
+                      type="text"
+                      placeholder="ip:port:login:password (например 161.115.231.113:9149:UZtsa1:h4fKKh)"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                      onChange={(e) => {
+                        const parsed = parseProxyString(e.target.value);
+                        if (parsed) {
+                          setSettings({
+                            ...settings,
+                            proxy_host: parsed.host,
+                            proxy_port: parsed.port,
+                            proxy_login: parsed.login,
+                            proxy_password: parsed.password,
+                          });
+                        }
+                      }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setIsEditingPrompt(true)}
-                      className="p-3 bg-white/5 border border-white/10 rounded-xl text-slate-400 hover:text-white hover:bg-white/10"
-                      title="Редактировать промпт"
+                      onClick={handleImportProxy}
+                      className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center gap-2"
                     >
-                      <Pencil size={18} />
+                      <Clipboard size={18} />
+                      Из буфера
                     </button>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
+                </div>
 
-          <div className="bg-white/[0.02] rounded-2xl border border-white/5 p-6">
-            <h2 className="text-lg font-bold text-white mb-4">Прокси</h2>
-            
-            <div className="mb-4 p-4 bg-indigo-500/10 rounded-xl border border-indigo-500/20">
-              <label className="block text-sm font-bold text-indigo-400 mb-2">Быстрая вставка proxy</label>
-              <div className="flex gap-2">
-                <input
-                  id="proxy-quick-input"
-                  type="text"
-                  placeholder="ip:port:login:password (например 161.115.231.113:9149:UZtsa1:h4fKKh)"
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                  onChange={(e) => {
-                    const parsed = parseProxyString(e.target.value);
-                    if (parsed) {
-                      setSettings({
-                        ...settings,
-                        proxy_host: parsed.host,
-                        proxy_port: parsed.port,
-                        proxy_login: parsed.login,
-                        proxy_password: parsed.password,
-                      });
-                    }
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={handleImportProxy}
-                  className="px-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center gap-2"
-                >
-                  <Clipboard size={18} />
-                  Из буфера
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-bold text-slate-400 mb-2">IP адрес</label>
-                <input
-                  type="text"
-                  value={settings.proxy_host}
-                  onChange={(e) => setSettings({ ...settings, proxy_host: e.target.value })}
-                  placeholder="192.168.1.1"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-400 mb-2">Порт</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={settings.proxy_port || ''}
-                    onChange={(e) => { setSettings({ ...settings, proxy_port: parseInt(e.target.value) || 0 }); setProxyStatus(null); }}
-                    placeholder="8080"
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={checkProxy}
-                    disabled={isCheckingProxy || !settings.proxy_host || !settings.proxy_port}
-                    className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {isCheckingProxy ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : proxyStatus === 'ok' ? (
-                      <span className="text-green-400">✓</span>
-                    ) : proxyStatus === 'error' ? (
-                      <span className="text-red-400">✗</span>
-                    ) : (
-                      <span className="text-slate-400">Проверить</span>
-                    )}
-                  </button>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">IP адрес</label>
+                    <input
+                      type="text"
+                      value={settings.proxy_host}
+                      onChange={(e) => setSettings({ ...settings, proxy_host: e.target.value })}
+                      placeholder="192.168.1.1"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Порт</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        value={settings.proxy_port || ''}
+                        onChange={(e) => { setSettings({ ...settings, proxy_port: parseInt(e.target.value) || 0 }); setProxyStatus(null); }}
+                        placeholder="8080"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={checkProxy}
+                        disabled={isCheckingProxy || !settings.proxy_host || !settings.proxy_port}
+                        className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white hover:bg-white/10 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {isCheckingProxy ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : proxyStatus === 'ok' ? (
+                          <span className="text-green-400">✓</span>
+                        ) : proxyStatus === 'error' ? (
+                          <span className="text-red-400">✗</span>
+                        ) : (
+                          <span className="text-slate-400">Проверить</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Логин</label>
+                    <input
+                      type="text"
+                      value={settings.proxy_login}
+                      onChange={(e) => setSettings({ ...settings, proxy_login: e.target.value })}
+                      placeholder="username"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-400 mb-2">Пароль</label>
+                    <input
+                      type="password"
+                      value={settings.proxy_password}
+                      onChange={(e) => setSettings({ ...settings, proxy_password: e.target.value })}
+                      placeholder="••••••••"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-400 mb-2">Логин</label>
-                <input
-                  type="text"
-                  value={settings.proxy_login}
-                  onChange={(e) => setSettings({ ...settings, proxy_login: e.target.value })}
-                  placeholder="username"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-400 mb-2">Пароль</label>
-                <input
-                  type="password"
-                  value={settings.proxy_password}
-                  onChange={(e) => setSettings({ ...settings, proxy_password: e.target.value })}
-                  placeholder="••••••••"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 outline-none focus:border-indigo-500"
-                />
-              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
