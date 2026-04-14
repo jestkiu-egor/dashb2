@@ -20,6 +20,8 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { db } from '../lib/db';
 
+/* Version: 1.0.5 - Absolute AllOrigins Fix */
+
 interface ProxyTabProps {
   project: Project;
   onUpdateProxies: (proxies: Proxy[]) => void;
@@ -65,7 +67,7 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
   const silentUpdate = async (key: string) => {
     try {
       const targetUrl = `https://px6.link/api/${key}/getproxy?_t=${Date.now()}`;
-      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
       const response = await fetch(proxyUrl);
       const data = await response.json();
       if (data.status === 'yes') {
@@ -111,10 +113,10 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
     setIsLoading(true);
     try {
       const targetUrl = `https://px6.link/api/${apiKey}/getproxy?_t=${Date.now()}`;
-      const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
       
       const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+      if (!response.ok) throw new Error(`Proxy Error ${response.status}`);
       
       const data = await response.json();
 
@@ -150,13 +152,13 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
         const refreshed = await db.fetchProjects();
         const refreshedProj = refreshed.find(p => p.id === project.id);
         if (refreshedProj) onUpdateProxies(refreshedProj.proxies);
-        alert(`✅ Готово!\nБаланс: ${data.balance} ${data.currency}`);
+        alert(`✅ Успешно!\nБаланс: ${data.balance} ${data.currency}`);
       } else {
         alert(`Ошибка API: ${data.error || 'Неверный ответ'}`);
       }
     } catch (error: any) {
       console.error(error);
-      alert('Ошибка при синхронизации.');
+      alert(`Ошибка синхронизации: ${error.message}.`);
     } finally {
       setIsLoading(false);
     }
@@ -206,15 +208,14 @@ export const ProxyTab = ({ project, onUpdateProxies }: ProxyTabProps) => {
           </div>
           
           <div className="flex flex-wrap items-center gap-4">
-            {/* УЛУЧШЕННЫЙ ВИДЖЕТ БАЛАНСА (Виден всегда, если есть данные) */}
             <div className="bg-emerald-500/10 border border-emerald-500/20 px-6 py-3 rounded-2xl flex items-center gap-4 shadow-lg shadow-emerald-500/5 min-w-[180px]">
               <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-400">
-                <Coins size={20} />
+                {isLoading ? <RefreshCw size={20} className="animate-spin" /> : <Coins size={20} />}
               </div>
               <div className="flex flex-col">
                 <span className="text-[10px] text-emerald-500/60 font-bold uppercase tracking-[0.1em]">Ваш баланс</span>
                 <span className="text-xl font-black text-emerald-400 leading-none mt-1">
-                  {balance || '0.00'} <span className="text-xs font-bold opacity-60 uppercase">{currency || 'RUB'}</span>
+                  {balance || (isLoading ? '...' : '0.00')} <span className="text-xs font-bold opacity-60 uppercase">{currency || 'RUB'}</span>
                 </span>
               </div>
             </div>
