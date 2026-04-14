@@ -604,7 +604,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
     }
 
     if (!settings.proxy_host || !settings.proxy_port) {
-      alert('Прокси не настроен. Перейдите в Настройки → Ассистент и настройте прокси.');
+      alert('Прокси не настроен. Перейдите в Настройки → Ассистент-парсер и настройте прокси.');
       setIsProcessing(false);
       return;
     }
@@ -626,11 +626,11 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
         // Открываем модалку создания задачи
         setIsAddTaskModalOpen(true);
       } else {
-        alert('Ошибка связи с нейронкой. Проверьте настройки прокси и API в Настройки → Ассистент');
+alert('Ошибка связи с нейронкой. Проверьте настройки прокси и API в Настройки → Ассистент-парсер');
       }
     } catch (error) {
       console.error('Error creating AI task:', error);
-      alert('Ошибка связи с нейронкой. Проверьте настройки прокси и API в Настройки → Ассистент');
+      alert('Ошибка связи с нейронкой. Проверьте настройки прокси и API в Настройки → Ассистент-парсер');
     } finally {
       setIsProcessing(false);
     }

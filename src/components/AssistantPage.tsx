@@ -225,7 +225,7 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
               <Bot className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Ассистент</h1>
+              <h1 className="text-2xl font-bold text-white">Ассистент-парсер</h1>
               <p className="text-slate-400 text-sm">Настройки AI и прокси</p>
             </div>
           </div>
@@ -247,7 +247,7 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
               <Bot className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Ассистент</h1>
+              <h1 className="text-2xl font-bold text-white">Ассистент-парсер</h1>
               <p className="text-slate-400 text-sm">Настройки AI и прокси</p>
             </div>
           </div>

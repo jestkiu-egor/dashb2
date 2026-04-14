@@ -26,7 +26,7 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
   ];
 
   const integrationItems = [
-    { id: 'assistant', label: 'Ассистент', icon: Bot },
+    { id: 'assistant', label: 'Ассистент-парсер', icon: Bot },
   ];
 
   const handleBacklogClick = () => {
@@ -80,14 +80,17 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
           return (
             <div key={item.id}>
               <button
+                type="button"
                 onClick={isBacklog ? handleBacklogClick : isIntegrations ? handleIntegrationsClick : () => { setActiveTab(item.id); setIsProjectsOpen(false); setIsIntegrationsOpen(false); }}
                 className={cn(
-                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative outline-none",
+                  "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-300 group relative outline-none focus:outline-none focus-visible:outline-none active:outline-none",
                   isActive 
-                    ? "bg-purple-600/20 text-purple-400 border border-purple-500/30" 
+                    ? isIntegrations 
+                      ? "bg-purple-600/20 text-purple-400 border border-purple-500/30"
+                      : "bg-indigo-600/20 text-indigo-400 border border-indigo-500/30" 
                     : isIntegrations
                     ? "bg-purple-600/10 text-purple-400 border border-purple-500/20 hover:bg-purple-600/20"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                    : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
                 )}
               >
                 <Icon size={20} className={cn("transition-transform duration-300", isActive && "scale-110")} />
@@ -174,12 +177,13 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
                         const isSubActive = activeTab === subItem.id;
                         return (
                           <button
+                            type="button"
                             key={subItem.id}
                             onClick={() => { setActiveTab(subItem.id); if (onOpenAssistant) onOpenAssistant(); setIsIntegrationsOpen(false); }}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all outline-none text-slate-400 hover:bg-white/5 hover:text-white"
+                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all outline-none focus:outline-none active:outline-none text-slate-400 hover:bg-white/5 hover:text-white"
                           >
                             <SubIcon size={14} />
-                            <span>Ассистент</span>
+                            <span>Ассистент-парсер</span>
                           </button>
                         );
                       })}
