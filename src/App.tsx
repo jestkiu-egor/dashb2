@@ -240,13 +240,27 @@ export default function App() {
               if (taskProjectId) {
                 handleUpdateTasks(taskProjectId, tasks);
               } else if (projects.length > 0) {
-                handleUpdateTasks(projects[0].id, tasks);
+                // Если проект не выбран, пробуем найти projectId у первой задачи
+                const pId = tasks[0]?.project_id || projects[0].id;
+                handleUpdateTasks(pId, tasks);
               }
             }}
             onDeleteTask={(taskId) => {
-              const task = allTasks.find(t => t.id === taskId);
-              const pId = taskProjectId || (projects.length > 0 ? projects[0].id : null);
-              if (pId) handleDeleteTask(pId, taskId);
+              // Находим задачу во всем списке, чтобы узнать её projectId
+              const taskToDelete = allTasks.find(t => t.id === taskId);
+              // У задач из БД поле называется project_id (из маппинга) или projectId
+              const pId = taskToDelete?.project_id || taskToDelete?.projectId;
+              
+              if (pId) {
+                console.log(`[App] Удаление задачи ${taskId} из проекта ${pId}`);
+                handleDeleteTask(pId, taskId);
+              } else {
+                console.error('[App] Не удалось определить проект для удаления задачи:', taskId);
+                // Если не нашли, пробуем удалить без привязки к локальному проекту
+                supabase.from('tasks').delete().eq('id', taskId).then(({ error }) => {
+                  if (!error) setProjects(prev => prev.map(p => ({...p, tasks: p.tasks.filter(t => t.id !== taskId)})));
+                });
+              }
             }}
             onSelectProject={setTaskProjectId}
           />
