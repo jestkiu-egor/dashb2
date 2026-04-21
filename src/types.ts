@@ -1,5 +1,13 @@
 export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
 
+export interface Column {
+  id: string;
+  project_id: string;
+  label: string;
+  color: string;
+  order: number;
+}
+
 export interface Comment {
   id: string;
   author: string;

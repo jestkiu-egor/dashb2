@@ -17,7 +17,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
-import { Task, TaskStatus, Project } from '../types';
+import { Task, TaskStatus, Project, Column } from '../types';
 import { format, isPast } from 'date-fns';
 import { cn } from '../lib/utils';
 import { VoiceInput } from '../lib/VoiceInput';
@@ -29,18 +29,23 @@ interface KanbanBoardProps {
   tasks: Task[];
   projects: Project[];
   selectedProjectId: string | null;
+  columns: Column[];
   onUpdateTasks: (tasks: Task[]) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectProject: (projectId: string | null) => void;
+  onUpdateColumn?: (column: Column) => void;
+  onDeleteColumn?: (columnId: string) => void;
+  onAddColumn?: (column: Column) => void;
+  onReorderColumns?: (columns: Column[]) => void;
 }
 
-interface Column {
+interface LocalColumn {
   id: string;
   label: string;
   color: string;
 }
 
-const DEFAULT_COLUMNS: Column[] = [
+const DEFAULT_COLUMNS: LocalColumn[] = [
   { id: 'todo', label: 'Нужно сделать', color: 'bg-slate-500' },
   { id: 'in-progress', label: 'В работе', color: 'bg-indigo-500' },
   { id: 'review', label: 'На проверке', color: 'bg-purple-500' },
@@ -241,7 +246,7 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
 }
 
 function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskClick }: { 
-  column: Column; 
+  column: LocalColumn; 
   tasks: Task[];
   onEdit: (newLabel: string) => void;
   onDelete: () => void;
@@ -329,8 +334,8 @@ function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskCli
   );
 }
 
-export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks, onSelectProject }: KanbanBoardProps) => {
-  const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
+export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbColumns, onUpdateTasks, onSelectProject, onUpdateColumn, onDeleteColumn, onAddColumn, onReorderColumns }: KanbanBoardProps) => {
+  const columns = dbColumns.length > 0 ? dbColumns : DEFAULT_COLUMNS;
   const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newTaskStatus, setNewTaskStatus] = useState<string>('todo');
@@ -453,7 +458,12 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
       const newColumns = Array.from(columns);
       const [removed] = newColumns.splice(source.index, 1);
       newColumns.splice(destination.index, 0, removed);
-      setColumns(newColumns);
+      const reorderedColumns = newColumns.map((col, idx) => ({ ...col, order: idx }));
+      if (onReorderColumns) {
+        onReorderColumns(reorderedColumns);
+      } else {
+        setColumns(reorderedColumns);
+      }
       return;
     }
 
@@ -503,9 +513,16 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
   };
 
   const handleEditColumn = (columnId: string, newLabel: string) => {
-    setColumns(columns.map(c => 
-      c.id === columnId ? { ...c, label: newLabel } : c
-    ));
+    if (onUpdateColumn) {
+      const column = columns.find(c => c.id === columnId);
+      if (column) {
+        onUpdateColumn({ ...column, label: newLabel });
+      }
+    } else {
+      setColumns(columns.map(c => 
+        c.id === columnId ? { ...c, label: newLabel } : c
+      ));
+    }
   };
 
   const handleDeleteColumn = (columnId: string) => {
@@ -514,20 +531,34 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
 
   const confirmDeleteColumn = () => {
     if (deleteConfirmColumn) {
-      setColumns(columns.filter(c => c.id !== deleteConfirmColumn));
+      if (onDeleteColumn) {
+        onDeleteColumn(deleteConfirmColumn);
+      } else {
+        setColumns(columns.filter(c => c.id !== deleteConfirmColumn));
+      }
       setDeleteConfirmColumn(null);
     }
   };
 
-  const handleAddColumn = () => {
+  const handleAddColumnLocal = () => {
     if (!newColumnName.trim()) return;
-    const newId = 'col-' + Math.random().toString(36).substr(2, 9);
     const colors = ['bg-slate-500', 'bg-indigo-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
-    setColumns([...columns, {
-      id: newId,
-      label: newColumnName.trim(),
-      color: colors[columns.length % colors.length]
-    }]);
+    if (onAddColumn && selectedProjectId) {
+      onAddColumn({
+        id: '',
+        project_id: selectedProjectId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length],
+        order: columns.length
+      });
+    } else {
+      const newId = 'col-' + Math.random().toString(36).substr(2, 9);
+      setColumns([...columns, {
+        id: newId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length]
+      }]);
+    }
     setNewColumnName('');
     setIsAddColumnModalOpen(false);
   };
