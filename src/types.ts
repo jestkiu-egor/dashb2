@@ -7,6 +7,15 @@ export interface Comment {
   createdAt: Date;
 }
 
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  text: string;
+  file_url?: string;
+  file_name?: string;
+  created_at: string;
+}
+
 export interface Task {
   id: string;
   title: string;
