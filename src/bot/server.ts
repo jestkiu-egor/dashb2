@@ -1,11 +1,17 @@
 import { Telegraf, Markup } from 'telegraf';
 import { createClient } from '@supabase/supabase-js';
-import * as dotenv from 'dotenv';
 import * as fs from 'fs';
-import { parseTaskWithLLM, ParsedTask } from '../lib/llm';
+import { parseTaskWithLLM } from '../lib/llm';
 import { AssistantSettings } from '../types';
 
-dotenv.config();
+const envFile = new URL('../../.env', import.meta.url);
+const envContent = fs.readFileSync(envFile, 'utf-8');
+for (const line of envContent.split('\n')) {
+  const [key, ...valueParts] = line.split('=');
+  if (key && valueParts.length) {
+    process.env[key.trim()] = valueParts.join('=').trim();
+  }
+}
 
 const logFile = 'bot_errors.log';
 const logger = (msg: string) => {
