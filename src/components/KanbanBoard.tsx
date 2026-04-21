@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -17,7 +17,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
-import { Task, TaskStatus, Project } from '../types';
+import { Task, TaskStatus, Project, Column } from '../types';
 import { format, isPast } from 'date-fns';
 import { cn } from '../lib/utils';
 import { VoiceInput } from '../lib/VoiceInput';
@@ -30,18 +30,23 @@ interface KanbanBoardProps {
   tasks: Task[];
   projects: Project[];
   selectedProjectId: string | null;
+  columns: Column[];
   onUpdateTasks: (tasks: Task[]) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectProject: (projectId: string | null) => void;
+  onUpdateColumn?: (column: Column) => void;
+  onDeleteColumn?: (columnId: string) => void;
+  onAddColumn?: (column: Column) => void;
+  onReorderColumns?: (columns: Column[]) => void;
 }
 
-interface Column {
+interface LocalColumn {
   id: string;
   label: string;
   color: string;
 }
 
-const DEFAULT_COLUMNS: Column[] = [
+const DEFAULT_COLUMNS: LocalColumn[] = [
   { id: 'todo', label: 'Нужно сделать', color: 'bg-slate-500' },
   { id: 'in-progress', label: 'В работе', color: 'bg-indigo-500' },
   { id: 'review', label: 'На проверке', color: 'bg-purple-500' },
@@ -224,8 +229,6 @@ function TaskModal({ task, columns, onClose, onUpdate, onDelete }: TaskModalProp
                 </button>
               </div>
             </div>
-
-            
           </div>
         </div>
 
@@ -238,6 +241,8 @@ function TaskModal({ task, columns, onClose, onUpdate, onDelete }: TaskModalProp
 }
 
 function TaskCard({ task, column, index }: { task: Task; column: Column; index: number }) {
+  const isOverdue = task.dueDate && isPast(new Date(task.dueDate)) && task.status !== 'done';
+  
   return (
     <Draggable draggableId={task.id} index={index}>
       {(provided, snapshot) => (
@@ -246,48 +251,44 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           className={cn(
-            "bg-slate-900/60 border border-white/10 p-3 rounded-xl transition-all cursor-grab",
+            "bg-slate-900/60 border border-white/10 p-4 rounded-xl transition-all cursor-grab",
             snapshot.isDragging && "opacity-50 border-indigo-500/50 shadow-lg scale-105 z-50"
           )}
         >
           <div className="flex items-center justify-between mb-2">
             {task.amount ? (
               <span className="text-indigo-400 font-bold text-sm">
-                {Number(task.amount).toLocaleString()} ₽
+                {task.amount.toLocaleString()} ₽
               </span>
             ) : (
-              <span className="text-slate-500 text-xs">-</span>
-            )}
-            {task.externalUrl && (
-              <a href={task.externalUrl} target="_blank" rel="noreferrer" 
-                className="text-indigo-400 hover:text-indigo-300"
-                onClick={(e) => e.stopPropagation()}>
-                <ExternalLink size={12} />
-              </a>
+              <span className="text-slate-500 text-xs">Без суммы</span>
             )}
           </div>
           
-          <h4 className="text-white font-medium text-sm mb-2 line-clamp-2">{task.title}</h4>
+          <h4 className="text-white font-medium text-sm mb-3">{task.title}</h4>
           
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-medium",
-              column.color + "/20 text-white"
-            )}>
-              {column.label}
-            </span>
-            <span className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-medium",
-              task.isPaid ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-700 text-slate-500"
-            )}>
-              {task.isPaid ? 'Опл' : '-'}
-            </span>
-            <span className={cn(
-              "px-2 py-0.5 rounded text-[10px] font-medium",
-              task.isAgreed ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-700 text-slate-500"
-            )}>
-              {task.isAgreed ? 'Согл' : '-'}
-            </span>
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center gap-2">
+              <Clock size={12} />
+              <span className={cn(isOverdue && "text-red-400 font-bold")}>
+                {task.dueDate ? format(new Date(task.dueDate), 'dd.MM') : '-'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              {task.comments.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <MessageSquare size={12} />
+                  {task.comments.length}
+                </span>
+              )}
+              {task.externalUrl && (
+                <a href={task.externalUrl} target="_blank" rel="noreferrer" 
+                  className="text-indigo-400 hover:text-indigo-300"
+                  onClick={(e) => e.stopPropagation()}>
+                  <ExternalLink size={12} />
+                </a>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -296,7 +297,7 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
 }
 
 function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskClick }: { 
-  column: Column; 
+  column: LocalColumn; 
   tasks: Task[];
   onEdit: (newLabel: string) => void;
   onDelete: () => void;
@@ -384,69 +385,8 @@ function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskCli
   );
 }
 
-export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks, onDeleteTask, onSelectProject }: KanbanBoardProps) => {
-  const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
-  const [isLoadingColumns, setIsLoadingColumns] = useState(true);
-  
-  // Загрузка колонок из Supabase
-  useEffect(() => {
-    const loadColumns = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('kanban_columns')
-          .select('*')
-          .order('order_num', { ascending: true });
-        
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-          setColumns(data.map((c: any) => ({
-            id: c.id,
-            label: c.label,
-            color: c.color || 'bg-slate-500'
-          })));
-        }
-      } catch (err) {
-        console.error('Ошибка загрузки колонок:', err);
-      } finally {
-        setIsLoadingColumns(false);
-      }
-    };
-    
-    loadColumns();
-  }, []);
-  
-  // Сохранение колонок в Supabase
-  const saveColumnsToSupabase = async (newColumns: Column[]) => {
-    try {
-      // Получаем текущие ID колонок из БД
-      const { data: existingCols } = await supabase.from('kanban_columns').select('id');
-      
-      if (existingCols && existingCols.length > 0) {
-        const existingIds = existingCols.map(c => c.id);
-        // Удаляем те, которых нет в новом списке
-        const idsToDelete = existingIds.filter(id => !newColumns.find(nc => nc.id === id));
-        if (idsToDelete.length > 0) {
-          await supabase.from('kanban_columns').delete().in('id', idsToDelete);
-        }
-      }
-      
-      // Вставляем/обновляем новые
-      if (newColumns.length > 0) {
-        const columnsToUpsert = newColumns.map((c, index) => ({
-          id: c.id,
-          label: c.label,
-          color: c.color,
-          order_num: index
-        }));
-        
-        await supabase.from('kanban_columns').upsert(columnsToUpsert, { onConflict: 'id' });
-      }
-    } catch (err) {
-      console.error('Ошибка сохранения колонок:', err);
-    }
-  };
-  
+export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbColumns, onUpdateTasks, onSelectProject, onUpdateColumn, onDeleteColumn, onAddColumn, onReorderColumns }: KanbanBoardProps) => {
+  const columns = dbColumns.length > 0 ? dbColumns : DEFAULT_COLUMNS;
   const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
   const [newTaskStatus, setNewTaskStatus] = useState<string>('todo');
@@ -569,7 +509,12 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
       const newColumns = Array.from(columns);
       const [removed] = newColumns.splice(source.index, 1);
       newColumns.splice(destination.index, 0, removed);
-      setColumns(newColumns);
+      const reorderedColumns = newColumns.map((col, idx) => ({ ...col, order: idx }));
+      if (onReorderColumns) {
+        onReorderColumns(reorderedColumns);
+      } else {
+        setColumns(reorderedColumns);
+      }
       return;
     }
 
@@ -619,11 +564,16 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
   };
 
   const handleEditColumn = (columnId: string, newLabel: string) => {
-    const newColumns = columns.map(c => 
-      c.id === columnId ? { ...c, label: newLabel } : c
-    );
-    setColumns(newColumns);
-    saveColumnsToSupabase(newColumns);
+    if (onUpdateColumn) {
+      const column = columns.find(c => c.id === columnId);
+      if (column) {
+        onUpdateColumn({ ...column, label: newLabel });
+      }
+    } else {
+      setColumns(columns.map(c => 
+        c.id === columnId ? { ...c, label: newLabel } : c
+      ));
+    }
   };
 
   const handleDeleteColumn = (columnId: string) => {
@@ -632,24 +582,34 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
 
   const confirmDeleteColumn = () => {
     if (deleteConfirmColumn) {
-      const newColumns = columns.filter(c => c.id !== deleteConfirmColumn);
-      setColumns(newColumns);
-      saveColumnsToSupabase(newColumns);
+      if (onDeleteColumn) {
+        onDeleteColumn(deleteConfirmColumn);
+      } else {
+        setColumns(columns.filter(c => c.id !== deleteConfirmColumn));
+      }
       setDeleteConfirmColumn(null);
     }
   };
 
-  const handleAddColumn = () => {
+  const handleAddColumnLocal = () => {
     if (!newColumnName.trim()) return;
-    const newId = 'col-' + Math.random().toString(36).substr(2, 9);
     const colors = ['bg-slate-500', 'bg-indigo-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
-    const newColumns = [...columns, {
-      id: newId,
-      label: newColumnName.trim(),
-      color: colors[columns.length % colors.length]
-    }];
-    setColumns(newColumns);
-    saveColumnsToSupabase(newColumns);
+    if (onAddColumn && selectedProjectId) {
+      onAddColumn({
+        id: '',
+        project_id: selectedProjectId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length],
+        order: columns.length
+      });
+    } else {
+      const newId = 'col-' + Math.random().toString(36).substr(2, 9);
+      setColumns([...columns, {
+        id: newId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length]
+      }]);
+    }
     setNewColumnName('');
     setIsAddColumnModalOpen(false);
   };
@@ -768,14 +728,6 @@ alert('Ошибка связи с нейронкой. Проверьте нас�
       setIsProcessing(false);
     }
   };
-
-  if (isLoadingColumns) {
-    return (
-      <div className="p-6 space-y-6 relative z-10 h-full flex flex-col items-center justify-center">
-        <div className="text-slate-400">Загрузка...</div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-6 space-y-6 relative z-10 h-full flex flex-col">
