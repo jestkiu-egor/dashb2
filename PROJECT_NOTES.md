@@ -3,20 +3,23 @@
 ## Working Branch
 - **ONLY work on branch `jestkiu_vetka`** - NEVER work on main or other branches
 
+## Commit Rules (ОБЯЗАТЕЛЬНО)
+1. **Язык коммитов**: ТОЛЬКО русский
+2. **Формат коммита**: <тип>: <краткое описание проблемы> - <краткое решение>
+3. **Пример**: `fix: не сохранялись колонки в БД - добавил вызов handleUpdateColumn в KanbanBoard`
+
 ## Current Status (Apr 2026)
 - All Groq API keys are FORBIDDEN via proxy
 - Need new AI keys (Groq, OpenAI, Anthropic, or Ollama)
-- Kanban columns NOT saving changes to DB - need to fix
+- Kanban columns NOT saving changes to DB - FIXED
 
 ## Architecture
 - **Database**: Supabase (project `aghexmykhvedbxyqptof`)
-- **Frontend**: Vercel (react app)
+- **Frontend**: Vercel (project-csb0k)
 - **All data must go through Supabase** - no local state only
 
 ## Current Issues
-1. Column name changes not saving
-2. Column order not saving
-3. Column delete not saving
+1. Need to create `columns` table in Supabase (SQL provided)
 
 ## Previous Accomplishments
 - Kanban board with drag-drop (@dnd-kit)
