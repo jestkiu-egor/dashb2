@@ -7,7 +7,7 @@ import { KanbanBoard } from './components/KanbanBoard';
 import { Finance } from './components/Finance';
 import { AssistantPage } from './components/AssistantPage';
 import { SAMPLE_PROJECTS } from './constants';
-import { Project, Task, Transaction } from './types';
+import { Project, Task, Transaction, Column } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { supabase } from './lib/supabase';
 
@@ -18,6 +18,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [columns, setColumns] = useState<Column[]>([]);
 
   // Загрузка данных из Supabase
   useEffect(() => {
@@ -95,6 +96,91 @@ export default function App() {
 
     fetchProjects();
   }, []);
+
+  // Загрузка колонок из Supabase
+  useEffect(() => {
+    const fetchColumns = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('columns')
+          .select('*')
+          .order('order', { ascending: true });
+
+        if (error) throw error;
+        setColumns(data || []);
+      } catch (err) {
+        console.error('Ошибка загрузки колонок:', err);
+      }
+    };
+
+    fetchColumns();
+  }, []);
+
+  // Обновление колонки
+  const handleUpdateColumn = async (column: Column) => {
+    try {
+      const { error } = await supabase
+        .from('columns')
+        .update({ label: column.label, color: column.color, order: column.order })
+        .eq('id', column.id);
+
+      if (error) throw error;
+      setColumns(prev => prev.map(c => c.id === column.id ? column : c));
+    } catch (err) {
+      console.error('Ошибка обновления колонки:', err);
+    }
+  };
+
+  // Удаление колонки
+  const handleDeleteColumn = async (columnId: string) => {
+    try {
+      const { error } = await supabase
+        .from('columns')
+        .delete()
+        .eq('id', columnId);
+
+      if (error) throw error;
+      setColumns(prev => prev.filter(c => c.id !== columnId));
+    } catch (err) {
+      console.error('Ошибка удаления колонки:', err);
+    }
+  };
+
+  // Добавление колонки
+  const handleAddColumn = async (column: Column) => {
+    try {
+      const { data, error } = await supabase
+        .from('columns')
+        .insert([{
+          project_id: column.project_id,
+          label: column.label,
+          color: column.color,
+          order: column.order
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+      setColumns(prev => [...prev, data]);
+    } catch (err) {
+      console.error('Ошибка добавления колонки:', err);
+    }
+  };
+
+  // Переименование колонок
+  const handleReorderColumns = async (newColumns: Column[]) => {
+    setColumns(newColumns);
+    try {
+      for (const col of newColumns) {
+        await supabase
+          .from('columns')
+          .update({ order: col.order })
+          .eq('id', col.id);
+      }
+    } catch (err) {
+      console.error('Ошибка сохранения порядка колонок:', err);
+    }
+  };
 
   const handleAddProject = async (newProject: Project) => {
     try {
@@ -309,6 +395,7 @@ export default function App() {
             tasks={allTasks}
             projects={projects}
             selectedProjectId={taskProjectId}
+            columns={columns}
             onUpdateTasks={(tasks) => {
               if (taskProjectId) {
                 handleUpdateTasks(taskProjectId, tasks);
@@ -336,6 +423,10 @@ export default function App() {
               }
             }}
             onSelectProject={setTaskProjectId}
+            onUpdateColumn={handleUpdateColumn}
+            onDeleteColumn={handleDeleteColumn}
+            onAddColumn={handleAddColumn}
+            onReorderColumns={handleReorderColumns}
           />
         );
       case 'assistant':
