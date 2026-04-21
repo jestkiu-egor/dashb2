@@ -9,8 +9,10 @@ export interface ParsedTask {
   assignee?: string;
   dueDate?: string;
   amount?: number;
-  priority?: 'low' | 'medium' | 'high';
+  status?: 'backlog' | 'bugs' | 'done' | 'paid';
   externalUrl?: string;
+  isPaid?: boolean;
+  isAgreed?: boolean;
 }
 
 export async function parseTaskWithLLM(

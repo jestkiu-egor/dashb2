@@ -31,7 +31,7 @@ interface KanbanBoardProps {
   projects: Project[];
   selectedProjectId: string | null;
   columns: Column[];
-  onUpdateTasks: (tasks: Task[]) => void;
+  onUpdateTasks: (tasks: Task[], singleTaskId?: string) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectProject: (projectId: string | null) => void;
   onUpdateColumn?: (column: Column) => void;
@@ -268,13 +268,18 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
           <h4 className="text-white font-medium text-sm mb-3">{task.title}</h4>
           
           <div className="flex items-center justify-between text-xs text-slate-500">
+            
             <div className="flex items-center gap-2">
-              <Clock size={12} />
-              <span className={cn(isOverdue && "text-red-400 font-bold")}>
-                {task.dueDate ? format(new Date(task.dueDate), 'dd.MM') : '-'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
+              {task.isPaid ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-medium">Опл</span>
+              ) : (
+                <span className="text-slate-600">-</span>
+              )}
+              {task.isAgreed ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-medium">Согл</span>
+              ) : (
+                <span className="text-slate-600">-</span>
+              )}
               {task.comments.length > 0 && (
                 <span className="flex items-center gap-1">
                   <MessageSquare size={12} />
@@ -282,7 +287,7 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
                 </span>
               )}
               {task.externalUrl && (
-                <a href={task.externalUrl} target="_blank" rel="noreferrer" 
+                <a href={task.externalUrl} target="_blank" rel="noreferrer"
                   className="text-indigo-400 hover:text-indigo-300"
                   onClick={(e) => e.stopPropagation()}>
                   <ExternalLink size={12} />
@@ -386,10 +391,10 @@ function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskCli
 }
 
 export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbColumns, onUpdateTasks, onSelectProject, onUpdateColumn, onDeleteColumn, onAddColumn, onReorderColumns }: KanbanBoardProps) => {
-  const columns = dbColumns.length > 0 ? dbColumns : DEFAULT_COLUMNS;
+  const columns = dbColumns?.length > 0 ? dbColumns : DEFAULT_COLUMNS;
   const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
-  const [newTaskStatus, setNewTaskStatus] = useState<string>('todo');
+  const [newTaskStatus, setNewTaskStatus] = useState<string>(columns[0]?.id || 'backlog');
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssignee, setNewTaskAssignee] = useState('');
@@ -542,7 +547,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbCol
         }
         return t;
       });
-      onUpdateTasks(updatedTasks);
+      onUpdateTasks(updatedTasks, draggableId);
     } else {
       // Move to different column
       const taskToMove = tasks.find(t => t.id === draggableId);
@@ -559,7 +564,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbCol
       
       // Rebuild tasks
       const otherTasks = updatedTasks.filter(t => t.status !== destColumnId);
-      onUpdateTasks([...otherTasks, ...destColumnTasks]);
+      onUpdateTasks([...otherTasks, ...destColumnTasks], draggableId);
     }
   };
 
@@ -621,7 +626,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbCol
     setNewTaskAmount('');
     setNewTaskLink('');
     setNewTaskDescription('');
-    setNewTaskStatus('todo');
+    setNewTaskStatus(columns[0]?.id || 'backlog');
   };
 
   const handleAddTask = () => {
@@ -640,14 +645,14 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbCol
       externalUrl: newTaskLink || undefined,
       assignee: newTaskAssignee || undefined,
     };
-    onUpdateTasks([...tasks, newTask]);
+    onUpdateTasks([...tasks, newTask], newTask.id);
     resetTaskForm();
     setIsAddTaskModalOpen(false);
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
     const updatedTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-    onUpdateTasks(updatedTasks);
+    onUpdateTasks(updatedTasks, updatedTask.id);
     setSelectedTask(updatedTask);
   };
 
@@ -770,7 +775,7 @@ alert('Ошибка связи с нейронкой. Проверьте нас�
             </button>
             <button
               onClick={() => {
-                setNewTaskStatus('todo');
+                setNewTaskStatus(columns[0]?.id || 'backlog');
                 setIsAddTaskModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all text-sm"

@@ -62,6 +62,8 @@ export default function App() {
                 dueDate: t.due_date ? new Date(t.due_date) : undefined,
                 assignee: t.assignee || undefined,
                 externalUrl: t.external_url || undefined,
+                isPaid: t.is_paid || false,
+                isAgreed: t.is_agreed || false,
                 comments: t.comments || []
               })),
               transactions: (transactions || []).map((tr: any) => ({
@@ -102,12 +104,12 @@ export default function App() {
     const fetchColumns = async () => {
       try {
         const { data, error } = await supabase
-          .from('columns')
+          .from('kanban_columns')
           .select('*')
-          .order('order', { ascending: true });
+          .order('order_num', { ascending: true });
 
         if (error) throw error;
-        setColumns(data || []);
+        setColumns((data || []).map(c => ({ ...c, order: c.order_num })));
       } catch (err) {
         console.error('Ошибка загрузки колонок:', err);
       }
@@ -120,8 +122,8 @@ export default function App() {
   const handleUpdateColumn = async (column: Column) => {
     try {
       const { error } = await supabase
-        .from('columns')
-        .update({ label: column.label, color: column.color, order: column.order })
+        .from('kanban_columns')
+        .update({ label: column.label, color: column.color, order_num: column.order })
         .eq('id', column.id);
 
       if (error) throw error;
@@ -135,7 +137,7 @@ export default function App() {
   const handleDeleteColumn = async (columnId: string) => {
     try {
       const { error } = await supabase
-        .from('columns')
+        .from('kanban_columns')
         .delete()
         .eq('id', columnId);
 
@@ -150,18 +152,18 @@ export default function App() {
   const handleAddColumn = async (column: Column) => {
     try {
       const { data, error } = await supabase
-        .from('columns')
+        .from('kanban_columns')
         .insert([{
           project_id: column.project_id,
           label: column.label,
           color: column.color,
-          order: column.order
+          order_num: column.order
         }])
         .select()
         .single();
 
       if (error) throw error;
-      setColumns(prev => [...prev, data]);
+      setColumns(prev => [...prev, { ...data, order: data.order_num }]);
     } catch (err) {
       console.error('Ошибка добавления колонки:', err);
     }
@@ -173,8 +175,8 @@ export default function App() {
     try {
       for (const col of newColumns) {
         await supabase
-          .from('columns')
-          .update({ order: col.order })
+          .from('kanban_columns')
+          .update({ order_num: col.order })
           .eq('id', col.id);
       }
     } catch (err) {
@@ -230,37 +232,43 @@ export default function App() {
     }
   };
 
-  const handleUpdateTasks = async (projectId: string, tasks: Task[]) => {
+  const handleUpdateTasks = async (projectId: string, tasks: Task[], singleTaskId?: string) => {
     // Обновляем локальное состояние для мгновенного отклика
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks } : p));
     if (selectedProject?.id === projectId) {
       setSelectedProject(prev => prev ? { ...prev, tasks } : null);
     }
 
-    try {
-      const updatedTasksWithRealIds = [...tasks];
+    // Синхронизируем с Supabase в фоне (без await)
+    (async () => {
+      try {
+        // Если передан singleTaskId - синхронизируем только эту задачу
+        const tasksToSync = singleTaskId 
+          ? tasks.filter(t => t.id === singleTaskId)
+          : tasks;
 
-      for (let i = 0; i < updatedTasksWithRealIds.length; i++) {
-        const task = updatedTasksWithRealIds[i];
-        const isTemporaryId = task.id.includes('.') || task.id.length < 10;
+        for (let i = 0; i < tasksToSync.length; i++) {
+          const task = tasksToSync[i];
+          const isTemporaryId = task.id.includes('.') || task.id.length < 10;
 
-        const { data, error } = await supabase
-          .from('tasks')
-          .upsert({
-            id: isTemporaryId ? undefined : task.id,
-            project_id: projectId,
-            title: task.title,
-            description: task.description,
-            amount: task.amount,
-            status: task.status,
-            priority: task.priority,
-            is_paid: task.isPaid,
-            due_date: task.dueDate?.toISOString(),
-            assignee: task.assignee || null,
-            external_url: task.externalUrl || null
-          })
-          .select()
-          .single();
+          const { data, error } = await supabase
+            .from('tasks')
+            .upsert({
+              id: isTemporaryId ? undefined : task.id,
+              project_id: projectId,
+              title: task.title,
+              description: task.description,
+              amount: task.amount,
+              status: task.status,
+              priority: task.priority,
+              is_paid: task.isPaid,
+              is_agreed: task.isAgreed,
+              due_date: task.dueDate?.toISOString(),
+              assignee: task.assignee || null,
+              external_url: task.externalUrl || null
+            })
+            .select()
+            .single();
         
         if (error) {
           console.error('Ошибка сохранения задачи:', error.message);
@@ -273,13 +281,10 @@ export default function App() {
         }
       }
 
-      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, tasks: updatedTasksWithRealIds } : p));
-      if (selectedProject?.id === projectId) {
-        setSelectedProject(prev => prev ? { ...prev, tasks: updatedTasksWithRealIds } : null);
+      } catch (err) {
+        console.error('Ошибка синхронизации задач:', err);
       }
-    } catch (err) {
-      console.error('Ошибка синхронизации задач:', err);
-    }
+    })();
   };
 
   const handleAddTransaction = async (projectId: string, transaction: Transaction) => {
@@ -373,6 +378,7 @@ export default function App() {
             onUpdateTasks={(tasks) => handleUpdateTasks(selectedProject.id, tasks)}
             onDeleteTask={(taskId) => handleDeleteTask(selectedProject.id, taskId)}
             projects={projects}
+            columns={columns}
           />
         ) : (
           <ProjectList 

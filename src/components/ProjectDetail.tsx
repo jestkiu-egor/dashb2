@@ -14,7 +14,7 @@ import {
   Plus,
   ListTodo
 } from 'lucide-react';
-import { Project, Proxy, ApiKey, Subscription, Task } from '../types';
+import { Project, Proxy, ApiKey, Subscription, Task, Column } from '../types';
 import { format, differenceInDays } from 'date-fns';
 import { useState } from 'react';
 import { cn } from '../lib/utils';
@@ -23,14 +23,15 @@ import { KanbanBoard } from './KanbanBoard';
 interface ProjectDetailProps {
   project: Project;
   onBack: () => void;
-  onUpdateTasks: (tasks: Task[]) => void;
+  onUpdateTasks: (tasks: Task[], singleTaskId?: string) => void;
   onDeleteTask: (taskId: string) => void;
   projects: Project[];
+  columns: Column[];
 }
 
 type TabType = 'overview' | 'tasks' | 'proxy' | 'api' | 'subscriptions';
 
-export const ProjectDetail = ({ project, onBack, onUpdateTasks, onDeleteTask, projects }: ProjectDetailProps) => {
+export const ProjectDetail = ({ project, onBack, onUpdateTasks, onDeleteTask, projects, columns }: ProjectDetailProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   const tabs = [
@@ -146,9 +147,14 @@ export const ProjectDetail = ({ project, onBack, onUpdateTasks, onDeleteTask, pr
                 tasks={project.tasks}
                 projects={projects}
                 selectedProjectId={project.id}
+                columns={columns}
                 onUpdateTasks={onUpdateTasks}
                 onDeleteTask={onDeleteTask}
                 onSelectProject={() => {}}
+                onUpdateColumn={() => {}}
+                onDeleteColumn={() => {}}
+                onAddColumn={() => {}}
+                onReorderColumns={() => {}}
               />
             </div>
           )}
