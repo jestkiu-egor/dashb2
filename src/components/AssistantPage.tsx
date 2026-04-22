@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, Archive, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, FolderArchive, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
 import { cn } from '../lib/utils';
@@ -242,10 +241,6 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      const proxyUrl = settings.proxy_login && settings.proxy_password
-        ? `http://${settings.proxy_login}:${settings.proxy_password}@${settings.proxy_host}:${settings.proxy_port}`
-        : `http://${settings.proxy_host}:${settings.proxy_port}`;
-
       const response = await fetch('https://api.groq.com/openai/v1/models', {
         method: 'GET',
         signal: controller.signal,
@@ -343,7 +338,7 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
                 className="p-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl transition-all border border-red-500/30"
                 title="Архивировать"
               >
-                <Archive size={18} />
+                <FolderArchive size={18} />
               </button>
             )}
             <button

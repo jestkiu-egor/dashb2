@@ -106,22 +106,29 @@ export default function App() {
     const fetchColumns = async () => {
       try {
         console.log('[App] Загрузка колонок...');
+        // Загружаем колонки для конкретного проекта, если он выбран, 
+        // либо все, но с фильтрацией по первому доступному проекту
+        const pId = selectedProject?.id || (projects.length > 0 ? projects[0].id : null);
+        
+        if (!pId) return;
+
         const { data, error } = await supabase
           .from('kanban_columns')
           .select('*')
+          .eq('project_id', pId)
           .order('order_num', { ascending: true });
 
         if (error) throw error;
         
         if (data && data.length > 0) {
           setColumns(data.map(c => ({ ...c, order: c.order_num })));
-        } else if (projects.length > 0) {
-          // Если колонок совсем нет в базе, создаем дефолтные для первого проекта
-          console.log('[App] Колонки не найдены, создаем дефолтные...');
+        } else {
+          // Если для ЭТОГО проекта колонок нет, создаем дефолтные
+          console.log(`[App] Колонки для проекта ${pId} не найдены, создаем...`);
           const defaultCols = [
-            { project_id: projects[0].id, label: 'Нужно сделать', color: 'bg-slate-500', order_num: 0 },
-            { project_id: projects[0].id, label: 'В работе', color: 'bg-indigo-500', order_num: 1 },
-            { project_id: projects[0].id, label: 'Готово', color: 'bg-emerald-500', order_num: 2 }
+            { project_id: pId, label: 'Нужно сделать', color: 'bg-slate-500', order_num: 0 },
+            { project_id: pId, label: 'В работе', color: 'bg-indigo-500', order_num: 1 },
+            { project_id: pId, label: 'Готово', color: 'bg-emerald-500', order_num: 2 }
           ];
           const { data: created } = await supabase.from('kanban_columns').insert(defaultCols).select();
           if (created) setColumns(created.map(c => ({ ...c, order: c.order_num })));
@@ -132,7 +139,7 @@ export default function App() {
     };
 
     if (projects.length > 0) fetchColumns();
-  }, [projects.length]);
+  }, [projects.length, selectedProject?.id]);
 
   // Обновление колонки
   const handleUpdateColumn = async (column: Column) => {

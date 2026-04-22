@@ -116,9 +116,17 @@ bot.action(/proj_(.+)/, async (ctx) => {
     sessions.set(userId, session);
 
     // Загружаем колонки (статусы) именно из kanban_columns
-    const { data: columns } = await supabase.from('kanban_columns').select('id, label').eq('project_id', projectId).order('order_num');
+    // Сначала пробуем найти колонки именно этого проекта
+    let { data: columns } = await supabase.from('kanban_columns').select('id, label').eq('project_id', projectId).order('order_num');
     
-    // Если колонок в БД нет, используем дефолтные
+    // Если для проекта нет колонок, берем "общие" (где project_id is null)
+    if (!columns || columns.length === 0) {
+      logger(`[DB] Колонки для проекта ${projectId} не найдены, ищем общие...`);
+      const { data: globalCols } = await supabase.from('kanban_columns').select('id, label').is('project_id', null).order('order_num');
+      columns = globalCols;
+    }
+    
+    // Если и общих нет, используем дефолтные
     const defaultCols = [
       { id: 'todo', label: 'Нужно сделать' },
       { id: 'in-progress', label: 'В работе' },
