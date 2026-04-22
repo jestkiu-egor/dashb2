@@ -15,7 +15,8 @@ import {
   Search,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Archive
 } from 'lucide-react';
 import { Task, TaskStatus, Project, Column } from '../types';
 import { format, isPast } from 'date-fns';

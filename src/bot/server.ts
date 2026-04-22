@@ -77,8 +77,14 @@ bot.on('text', async (ctx) => {
     
     // Пытаемся распарсить задачу через ИИ
     let parsed: any = null;
-    if (settingsData) {
-      parsed = await parseTaskWithLLM(text, settingsData as AssistantSettings);
+    try {
+      if (settingsData) {
+        logger('[LLM] Отправка в Edge Function...');
+        parsed = await parseTaskWithLLM(text, settingsData as AssistantSettings);
+        logger(`[LLM RESULT] ${JSON.stringify(parsed)}`);
+      }
+    } catch (llmErr: any) {
+      logger(`[LLM ERROR] ${llmErr.message}`);
     }
 
     const amountMatch = text.match(/(\d+)\s*(рублей|руб|р|₽)/i);
@@ -96,18 +102,26 @@ bot.on('text', async (ctx) => {
       step: 'awaiting_project'
     });
 
-    const { data: projects } = await supabase.from('projects').select('id, name');
+    logger('[DB] Запрос списка проектов...');
+    const { data: projects, error: projectsError } = await supabase.from('projects').select('id, name');
     
+    if (projectsError) {
+      logger(`[DB ERROR] Ошибка проектов: ${projectsError.message}`);
+      throw projectsError;
+    }
+
     await bot.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id);
 
     if (!projects || projects.length === 0) {
+      logger('[WARN] Проектов не найдено в БД');
       return ctx.reply('В базе нет проектов. Создайте проект в дашборде.');
     }
 
     const buttons = projects.map(p => [Markup.button.callback(p.name, `proj_${p.id}`)]);
     buttons.push([Markup.button.callback('❌ Отменить', 'cancel')]);
 
-    return ctx.reply(`Задача: "${sessions.get(userId)?.title}"\nКуда добавить?`, Markup.inlineKeyboard(buttons));
+    logger(`[REPLY] Отправка ${buttons.length} кнопок выбора проекта...`);
+    return ctx.reply(`Задача: "${sessions.get(userId)?.title}"\n\nКуда добавить?`, Markup.inlineKeyboard(buttons));
   } catch (err: any) {
     logger(`Ошибка парсинга: ${err.message}`);
     ctx.reply('Произошла ошибка при анализе задачи. Попробуйте еще раз.');
