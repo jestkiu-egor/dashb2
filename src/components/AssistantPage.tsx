@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft } from 'lucide-react';
+import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, Archive, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
 import { cn } from '../lib/utils';
@@ -43,6 +44,8 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
   const [proxyStatus, setProxyStatus] = useState<'ok' | 'error' | null>(null);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [message, setMessage] = useState('');
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [assistantData, setAssistantData] = useState<{name: string; description: string} | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -93,6 +96,11 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
           proxy_password: '',
         });
       }
+
+      if (assistantId) {
+        const { data: assistantData } = await supabase.from('assistants').select('name, description').eq('id', assistantId).single();
+        if (assistantData) setAssistantData(assistantData);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
     } finally {
@@ -142,6 +150,23 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
       setMessage('Ошибка сохранения');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!assistantId) return;
+    try {
+      const { error } = await supabase
+        .from('assistants')
+        .update({ is_archived: true })
+        .eq('id', assistantId);
+      
+      if (error) throw error;
+      
+      setShowArchiveModal(false);
+      if (onBack) onBack();
+    } catch (error) {
+      console.error('Error archiving:', error);
     }
   };
 
@@ -243,6 +268,31 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
 
   if (!isOpen) return null;
 
+  if (showArchiveModal) {
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-md w-full">
+          <h3 className="text-xl font-bold text-white mb-4">Подтверждение</h3>
+          <p className="text-slate-300 mb-6">Ты уверен, что хочешь архивировать "{assistantData?.name || assistantId}"?</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowArchiveModal(false)}
+              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleArchive}
+              className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold"
+            >
+              Архивировать
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!supabase) {
     return (
       <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
@@ -282,18 +332,29 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
               <Bot className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">{assistantId ? assistantId : 'Ассистент-парсер'}</h1>
-              <p className="text-slate-400 text-sm">Настройки AI и прокси</p>
+              <h1 className="text-2xl font-bold text-white">{assistantData?.name || assistantId || 'Ассистент-парсер'}</h1>
+              <p className="text-slate-400 text-sm">{assistantData?.description || 'Настройки AI и прокси'}</p>
             </div>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={18} />}
-            Сохранить
-          </button>
+          <div className="flex items-center gap-2">
+            {assistantId && assistantId !== 'telegram-parser' && (
+              <button
+                onClick={() => setShowArchiveModal(true)}
+                className="p-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl transition-all border border-red-500/30"
+                title="Архивировать"
+              >
+                <Archive size={18} />
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={18} />}
+              Сохранить
+            </button>
+          </div>
         </div>
 
         {isLoading ? (

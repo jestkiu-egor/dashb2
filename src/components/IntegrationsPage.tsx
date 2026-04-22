@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bot, Plus, Settings, ChevronRight, Search, Loader2, Archive, Trash2 } from 'lucide-react';
+import { Bot, Plus, Settings, ChevronRight, Search, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 

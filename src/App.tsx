@@ -439,7 +439,15 @@ export default function App() {
         );
       case 'assistant':
         if (activeAssistantId) {
-          return <AssistantPage assistantId={activeAssistantId} isOpen={true} onBack={() => setActiveAssistantId(null)} />;
+          return (
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <AssistantPage 
+                assistantId={activeAssistantId} 
+                isOpen={true} 
+                onBack={() => setActiveAssistantId(null)} 
+              />
+            </div>
+          );
         }
         return <IntegrationsPage onSelectAssistant={(id) => setActiveAssistantId(id)} />;
       default:
