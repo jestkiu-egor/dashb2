@@ -115,8 +115,8 @@ bot.action(/proj_(.+)/, async (ctx) => {
     session.step = 'awaiting_status';
     sessions.set(userId, session);
 
-    // Загружаем колонки (статусы) из БД
-    const { data: columns } = await supabase.from('columns').select('id, label').eq('project_id', projectId).order('order');
+    // Загружаем колонки (статусы) именно из kanban_columns
+    const { data: columns } = await supabase.from('kanban_columns').select('id, label').eq('project_id', projectId).order('order_num');
     
     // Если колонок в БД нет, используем дефолтные
     const defaultCols = [
