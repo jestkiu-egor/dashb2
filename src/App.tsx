@@ -6,6 +6,7 @@ import { ProjectDetail } from './components/ProjectDetail';
 import { KanbanBoard } from './components/KanbanBoard';
 import { Finance } from './components/Finance';
 import { AssistantPage } from './components/AssistantPage';
+import { IntegrationsPage } from './components/IntegrationsPage';
 import { SAMPLE_PROJECTS } from './constants';
 import { Project, Task, Transaction, Column } from './types';
 import { AnimatePresence, motion } from 'motion/react';
@@ -14,6 +15,7 @@ import { supabase } from './lib/supabase';
 export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [taskProjectId, setTaskProjectId] = useState<string | null>(null);
@@ -436,7 +438,10 @@ export default function App() {
           />
         );
       case 'assistant':
-        return <AssistantPage isOpen={activeTab === 'assistant' || isAssistantOpen} />;
+        if (activeAssistantId) {
+          return <AssistantPage assistantId={activeAssistantId} isOpen={true} onBack={() => setActiveAssistantId(null)} />;
+        }
+        return <IntegrationsPage onSelectAssistant={(id) => setActiveAssistantId(id)} />;
       default:
         return <div className="p-8 text-white">Tab not found</div>;
     }
@@ -452,12 +457,14 @@ export default function App() {
           setActiveTab(tab);
           setSelectedProject(null);
           if (tab !== 'backlog') setTaskProjectId(null);
-          if (tab === 'assistant') setIsAssistantOpen(true);
+          if (tab === 'assistant') {
+            setIsAssistantOpen(true);
+          }
         }}
         projects={projects}
         selectedProjectId={taskProjectId}
         onSelectProject={setTaskProjectId}
-        onOpenAssistant={() => setIsAssistantOpen(true)}
+        onOpenAssistant={() => { setIsAssistantOpen(true); setActiveAssistantId(null); }}
       />
 
       <main className="flex-1 overflow-y-auto relative z-10 custom-scrollbar">

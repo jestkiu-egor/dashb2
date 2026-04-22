@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check } from 'lucide-react';
+import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
 import { cn } from '../lib/utils';
 
 interface AssistantPageProps {
   isOpen?: boolean;
+  assistantId?: string;
+  onBack?: () => void;
 }
 
 const parseProxyString = (proxyString: string): { host: string; port: number; login: string; password: string } | null => {
@@ -21,7 +23,7 @@ const parseProxyString = (proxyString: string): { host: string; port: number; lo
   return { host, port, login, password };
 };
 
-export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
+export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantPageProps) => {
   const [settings, setSettings] = useState<AssistantSettings>({
     id: '',
     llm_api_url: '',
@@ -48,15 +50,19 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
       return;
     }
     loadSettings();
-  }, []);
+  }, [assistantId]);
 
   const loadSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('assistant_settings')
-        .select('*')
-        .limit(1)
-        .single();
+      let query = supabase.from('assistant_settings').select('*');
+      
+      if (assistantId) {
+        query = query.eq('assistant_id', assistantId).limit(1).single();
+      } else {
+        query = query.limit(1).single();
+      }
+      
+      const { data, error } = await query;
 
       if (error && error.code !== 'PGRST116') {
         throw error;
@@ -73,6 +79,18 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
           proxy_port: data.proxy_port || 0,
           proxy_login: data.proxy_login || '',
           proxy_password: data.proxy_password || '',
+        });
+      } else if (assistantId) {
+        setSettings({
+          id: '',
+          llm_api_url: '',
+          llm_model: 'llama-3.3-70b-versatile',
+          llm_api_key: '',
+          llm_prompt: '',
+          proxy_host: '',
+          proxy_port: 0,
+          proxy_login: '',
+          proxy_password: '',
         });
       }
     } catch (error) {
@@ -91,20 +109,29 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     setMessage('');
 
     try {
+      const saveData: any = {
+        llm_api_url: settings.llm_api_url,
+        llm_model: settings.llm_model,
+        llm_api_key: settings.llm_api_key,
+        llm_prompt: settings.llm_prompt,
+        proxy_host: settings.proxy_host,
+        proxy_port: settings.proxy_port,
+        proxy_login: settings.proxy_login,
+        proxy_password: settings.proxy_password,
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (assistantId) {
+        saveData.assistant_id = assistantId;
+      }
+      
+      if (settings.id) {
+        saveData.id = settings.id;
+      }
+
       const { error } = await supabase
         .from('assistant_settings')
-        .upsert({
-          id: settings.id || undefined,
-          llm_api_url: settings.llm_api_url,
-          llm_model: settings.llm_model,
-          llm_api_key: settings.llm_api_key,
-          llm_prompt: settings.llm_prompt,
-          proxy_host: settings.proxy_host,
-          proxy_port: settings.proxy_port,
-          proxy_login: settings.proxy_login,
-          proxy_password: settings.proxy_password,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+        .upsert(saveData, { onConflict: 'id' });
 
       if (error) throw error;
 
@@ -243,11 +270,19 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-slate-400" />
+              </button>
+            )}
             <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
               <Bot className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Ассистент-парсер</h1>
+              <h1 className="text-2xl font-bold text-white">{assistantId ? assistantId : 'Ассистент-парсер'}</h1>
               <p className="text-slate-400 text-sm">Настройки AI и прокси</p>
             </div>
           </div>
