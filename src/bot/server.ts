@@ -19,30 +19,25 @@ const logger = (msg: string) => {
   console.log(msg);
 };
 
-logger('Инициализация бота (LLM + Manual Edition)...');
-
-// Проверка наличия переменных окружения
-if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  logger('КРИТИЧЕСКАЯ ОШИБКА: Переменные Supabase не найдены в .env');
-  process.exit(1);
-}
+logger('Инициализация бота (Status Selection Edition)...');
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN || '');
 const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 );
 
-type BotStep = 'awaiting_project' | 'awaiting_description' | 'confirm_task';
+type BotStep = 'awaiting_project' | 'awaiting_status' | 'awaiting_description' | 'confirm_task';
 interface Session {
   title: string;
   amount: number;
   date: Date;
   projectId?: string;
   projectName?: string;
+  statusId?: string;
+  statusName?: string;
   description?: string;
   externalUrl?: string;
-  status?: string;
   isPaid?: boolean;
   isAgreed?: boolean;
   step: BotStep;
@@ -60,7 +55,6 @@ bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const session = sessions.get(userId);
 
-  // Если ждем описание
   if (session?.step === 'awaiting_description') {
     session.description = text;
     session.step = 'confirm_task';
@@ -68,23 +62,14 @@ bot.on('text', async (ctx) => {
     return showSummary(ctx, session);
   }
 
-  // Новая задача: запускаем ИИ-парсинг
   logger(`[NEW TASK] от ${ctx.from.username}: ${text}`);
   const loadingMsg = await ctx.reply('🔍 Анализирую задачу...');
 
   try {
     const { data: settingsData } = await supabase.from('assistant_settings').select('*').limit(1).single();
-    
-    // Пытаемся распарсить задачу через ИИ
     let parsed: any = null;
-    try {
-      if (settingsData) {
-        logger('[LLM] Отправка в Edge Function...');
-        parsed = await parseTaskWithLLM(text, settingsData as AssistantSettings);
-        logger(`[LLM RESULT] ${JSON.stringify(parsed)}`);
-      }
-    } catch (llmErr: any) {
-      logger(`[LLM ERROR] ${llmErr.message}`);
+    if (settingsData) {
+      parsed = await parseTaskWithLLM(text, settingsData as AssistantSettings);
     }
 
     const amountMatch = text.match(/(\d+)\s*(рублей|руб|р|₽)/i);
@@ -94,7 +79,6 @@ bot.on('text', async (ctx) => {
       title: parsed?.title || text.split('\n')[0].slice(0, 100),
       amount: parsed?.amount || manualAmount,
       externalUrl: parsed?.externalUrl || '',
-      status: parsed?.status || 'todo',
       isPaid: parsed?.isPaid || false,
       isAgreed: parsed?.isAgreed || false,
       description: parsed?.description || text,
@@ -102,32 +86,22 @@ bot.on('text', async (ctx) => {
       step: 'awaiting_project'
     });
 
-    logger('[DB] Запрос списка проектов...');
-    const { data: projects, error: projectsError } = await supabase.from('projects').select('id, name');
-    
-    if (projectsError) {
-      logger(`[DB ERROR] Ошибка проектов: ${projectsError.message}`);
-      throw projectsError;
-    }
-
+    const { data: projects } = await supabase.from('projects').select('id, name');
     await bot.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id);
 
-    if (!projects || projects.length === 0) {
-      logger('[WARN] Проектов не найдено в БД');
-      return ctx.reply('В базе нет проектов. Создайте проект в дашборде.');
-    }
+    if (!projects || projects.length === 0) return ctx.reply('Нет проектов в БД.');
 
     const buttons = projects.map(p => [Markup.button.callback(p.name, `proj_${p.id}`)]);
     buttons.push([Markup.button.callback('❌ Отменить', 'cancel')]);
 
-    logger(`[REPLY] Отправка ${buttons.length} кнопок выбора проекта...`);
-    return ctx.reply(`Задача: "${sessions.get(userId)?.title}"\n\nКуда добавить?`, Markup.inlineKeyboard(buttons));
+    return ctx.reply(`Задача: "${sessions.get(userId)?.title}"\n\nВыбери проект:`, Markup.inlineKeyboard(buttons));
   } catch (err: any) {
-    logger(`Ошибка парсинга: ${err.message}`);
-    ctx.reply('Произошла ошибка при анализе задачи. Попробуйте еще раз.');
+    logger(`Ошибка: ${err.message}`);
+    ctx.reply('Ошибка. Попробуйте еще раз.');
   }
 });
 
+// 1. Выбор проекта -> Переход к выбору статуса
 bot.action(/proj_(.+)/, async (ctx) => {
   try {
     const userId = ctx.from?.id || 0;
@@ -138,16 +112,45 @@ bot.action(/proj_(.+)/, async (ctx) => {
     const { data: project } = await supabase.from('projects').select('name').eq('id', projectId).single();
     session.projectId = projectId;
     session.projectName = project?.name || 'Проект';
+    session.step = 'awaiting_status';
+    sessions.set(userId, session);
+
+    // Загружаем колонки (статусы) из БД
+    const { data: columns } = await supabase.from('columns').select('id, label').eq('project_id', projectId).order('order');
+    
+    // Если колонок в БД нет, используем дефолтные
+    const defaultCols = [
+      { id: 'todo', label: 'Нужно сделать' },
+      { id: 'in-progress', label: 'В работе' },
+      { id: 'review', label: 'На проверке' },
+      { id: 'done', label: 'Готово' }
+    ];
+
+    const currentCols = (columns && columns.length > 0) ? columns : defaultCols;
+
+    const buttons = currentCols.map(c => [Markup.button.callback(c.label, `stat_${c.id}`)]);
+    buttons.push([Markup.button.callback('❌ Отменить', 'cancel')]);
+
+    await ctx.answerCbQuery();
+    await ctx.editMessageText(`Проект: ${session.projectName}\n\nВ какой статус (колонку) добавить задачу?`, Markup.inlineKeyboard(buttons));
+  } catch (e) { await ctx.answerCbQuery(); }
+});
+
+// 2. Выбор статуса -> Переход к вводу описания
+bot.action(/stat_(.+)/, async (ctx) => {
+  try {
+    const userId = ctx.from?.id || 0;
+    const statusId = ctx.match[1];
+    const session = sessions.get(userId);
+    if (!session) return await ctx.answerCbQuery('Сессия истекла.');
+
+    session.statusId = statusId;
     session.step = 'awaiting_description';
     sessions.set(userId, session);
 
     await ctx.answerCbQuery();
-    await ctx.editMessageText(`Проект: **${session.projectName}**\n\nНапиши дополнительные детали (описание) или нажми пропустить:`, {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('⏭ Пропустить описание', 'skip_desc')],
-        [Markup.button.callback('❌ Отмена', 'cancel')]
-      ])
+    await ctx.editMessageText(`Напиши детали (описание) или нажми пропустить:`, {
+      ...Markup.inlineKeyboard([[Markup.button.callback('⏭ Пропустить', 'skip_desc')], [Markup.button.callback('❌ Отмена', 'cancel')]])
     });
   } catch (e) { await ctx.answerCbQuery(); }
 });
@@ -165,7 +168,7 @@ bot.action('skip_desc', async (ctx) => {
 bot.action('confirm_save', async (ctx) => {
   const userId = ctx.from?.id || 0;
   const session = sessions.get(userId);
-  if (!session || !session.projectId) return await ctx.answerCbQuery('Ошибка');
+  if (!session || !session.projectId) return;
 
   try {
     const { error } = await supabase.from('tasks').insert([{
@@ -173,7 +176,7 @@ bot.action('confirm_save', async (ctx) => {
       title: session.title,
       amount: session.amount,
       description: session.description || '',
-      status: session.status || 'todo',
+      status: session.statusId || 'todo', // Используем выбранный статус!
       priority: 'medium',
       external_url: session.externalUrl || '',
       is_paid: session.isPaid || false,
@@ -181,71 +184,42 @@ bot.action('confirm_save', async (ctx) => {
     }]);
 
     if (error) throw error;
-
     sessions.delete(userId);
     await ctx.answerCbQuery();
-    return ctx.editMessageText(`✅ Задача успешно создана в проекте ${session.projectName}!`);
+    return ctx.editMessageText(`✅ Задача добавлена в ${session.projectName}!`);
   } catch (err: any) {
     logger(`Ошибка БД: ${err.message}`);
-    ctx.reply(`Ошибка при сохранении: ${err.message}`);
+    ctx.reply(`Ошибка: ${err.message}`);
   }
-});
-
-bot.action('edit_desc', async (ctx) => {
-  const userId = ctx.from?.id || 0;
-  const session = sessions.get(userId);
-  if (!session) return;
-  session.step = 'awaiting_description';
-  sessions.set(userId, session);
-  await ctx.answerCbQuery();
-  return ctx.editMessageText('Напиши новое описание для задачи:');
 });
 
 bot.action('cancel', async (ctx) => {
   sessions.delete(ctx.from?.id || 0);
-  try { await ctx.answerCbQuery('Отменено'); } catch (e) {}
+  try { await ctx.answerCbQuery(); } catch (e) {}
   ctx.editMessageText('Отменено.');
 });
 
 async function showSummary(ctx: any, session: Session) {
-  const summary = `📋 **Резюме задачи:**\n\n` +
-    `**Название:** ${session.title}\n` +
-    `**Сумма:** ${session.amount} ₽\n` +
-    `**Проект:** ${session.projectName}\n` +
-    `**Описание:** ${session.description || 'нет'}\n\n` +
+  const summary = `📋 Резюме:\n\n` +
+    `Название: ${session.title}\n` +
+    `Сумма: ${session.amount} ₽\n` +
+    `Проект: ${session.projectName}\n` +
+    `Описание: ${session.description || 'нет'}\n\n` +
     `Создать задачу?`;
 
   const keyboard = Markup.inlineKeyboard([
-    [Markup.button.callback('🚀 Подтвердить и создать', 'confirm_save')],
-    [Markup.button.callback('📝 Изменить описание', 'edit_desc')],
+    [Markup.button.callback('🚀 Создать', 'confirm_save')],
     [Markup.button.callback('❌ Отмена', 'cancel')]
   ]);
 
-  try {
-    if (ctx.callbackQuery) {
-      return await ctx.editMessageText(summary, { parse_mode: 'Markdown', ...keyboard });
-    } else {
-      return await ctx.reply(summary, { parse_mode: 'Markdown', ...keyboard });
-    }
-  } catch (e) {
-    // Если Markdown ломается из-за спецсимволов, отправляем обычный текст
-    return ctx.reply(summary.replace(/\*/g, ''), keyboard);
-  }
+  if (ctx.callbackQuery) return await ctx.editMessageText(summary, keyboard);
+  return await ctx.reply(summary, keyboard);
 }
 
 bot.catch((err: any) => logger(`ГЛОБАЛЬНАЯ ОШИБКА: ${err.message || err}`));
-
 const startBot = async () => {
-  try {
-    await bot.launch();
-    logger('Бот запущен!');
-  } catch (err: any) {
-    logger(`Ошибка запуска: ${err.message}`);
-    setTimeout(startBot, 5000);
-  }
+  try { await bot.launch(); logger('Бот запущен!'); } catch (err: any) { setTimeout(startBot, 5000); }
 };
-
 startBot();
-
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
