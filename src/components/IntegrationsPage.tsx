@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bot, Plus, Settings, ChevronRight, Search, Loader2, Archive } from 'lucide-react';
+import { Bot, Plus, Settings, ChevronRight, Search, Loader2, FolderArchive } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 
@@ -214,7 +214,7 @@ export const IntegrationsPage = ({ onSelectAssistant }: IntegrationsPageProps) =
                       className="absolute top-3 right-3 p-2 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 rounded-lg transition-all"
                       title="Архивировать"
                     >
-                      <Archive size={14} className="text-slate-400" />
+                      <FolderArchive size={14} className="text-slate-400" />
                     </button>
                   </button>
                 ))}
