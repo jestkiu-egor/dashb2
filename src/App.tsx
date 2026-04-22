@@ -105,20 +105,34 @@ export default function App() {
   useEffect(() => {
     const fetchColumns = async () => {
       try {
+        console.log('[App] Загрузка колонок...');
         const { data, error } = await supabase
           .from('kanban_columns')
           .select('*')
           .order('order_num', { ascending: true });
 
         if (error) throw error;
-        setColumns((data || []).map(c => ({ ...c, order: c.order_num })));
+        
+        if (data && data.length > 0) {
+          setColumns(data.map(c => ({ ...c, order: c.order_num })));
+        } else if (projects.length > 0) {
+          // Если колонок совсем нет в базе, создаем дефолтные для первого проекта
+          console.log('[App] Колонки не найдены, создаем дефолтные...');
+          const defaultCols = [
+            { project_id: projects[0].id, label: 'Нужно сделать', color: 'bg-slate-500', order_num: 0 },
+            { project_id: projects[0].id, label: 'В работе', color: 'bg-indigo-500', order_num: 1 },
+            { project_id: projects[0].id, label: 'Готово', color: 'bg-emerald-500', order_num: 2 }
+          ];
+          const { data: created } = await supabase.from('kanban_columns').insert(defaultCols).select();
+          if (created) setColumns(created.map(c => ({ ...c, order: c.order_num })));
+        }
       } catch (err) {
         console.error('Ошибка загрузки колонок:', err);
       }
     };
 
-    fetchColumns();
-  }, []);
+    if (projects.length > 0) fetchColumns();
+  }, [projects.length]);
 
   // Обновление колонки
   const handleUpdateColumn = async (column: Column) => {
