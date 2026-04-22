@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bot, Plus, Settings, ChevronRight, Search, Loader2, FolderArchive } from 'lucide-react';
+import { Bot, Plus, Settings, ChevronRight, Search, Loader2, Archive } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 
@@ -34,7 +34,6 @@ export const IntegrationsPage = ({ onSelectAssistant }: IntegrationsPageProps) =
       const { data, error } = await supabase
         .from('assistants')
         .select('*')
-        .eq('is_archived', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -89,9 +88,29 @@ export const IntegrationsPage = ({ onSelectAssistant }: IntegrationsPageProps) =
         .eq('id', id);
 
       if (error) throw error;
-      setAssistants(prev => prev.filter(a => a.id !== id));
+      setAssistants(prev => prev.map(a => 
+        a.id === id ? { ...a, is_archived: true } : a
+      ));
     } catch (err) {
       console.error('Ошибка архивации:', err);
+    }
+  };
+
+  const handleUnarchive = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    try {
+      const { error } = await supabase
+        .from('assistants')
+        .update({ is_archived: false })
+        .eq('id', id);
+
+      if (error) throw error;
+      setAssistants(prev => prev.map(a => 
+        a.id === id ? { ...a, is_archived: false } : a
+      ));
+    } catch (err) {
+      console.error('Ошибка разархивации:', err);
     }
   };
 
@@ -110,7 +129,9 @@ export const IntegrationsPage = ({ onSelectAssistant }: IntegrationsPageProps) =
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Интеграции</h1>
-              <p className="text-slate-400 text-sm">Управление AI ассистентами</p>
+              <p className="text-slate-400 text-sm">
+                Активных: {assistants.filter(a => !a.is_archived).length} / Архивировано: {assistants.filter(a => a.is_archived).length}
+              </p>
             </div>
           </div>
           <button
@@ -195,27 +216,32 @@ export const IntegrationsPage = ({ onSelectAssistant }: IntegrationsPageProps) =
                   <button
                     key={assistant.id}
                     onClick={() => onSelectAssistant(assistant.id)}
-                    className="group relative bg-white/[0.02] hover:bg-white/[0.05] rounded-2xl border border-white/5 hover:border-white/10 p-6 text-left transition-all"
+                    className={cn(
+                      "group relative rounded-2xl border border-white/5 p-6 text-left transition-all",
+                      assistant.is_archived 
+                        ? "bg-white/[0.02] grayscale hover:grayscale-0" 
+                        : "bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/10"
+                    )}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-gradient-to-r from-purple-600/50 to-pink-600/50 rounded-xl flex items-center justify-center">
+                        <div className={cn(
+                          "w-10 h-10 rounded-xl flex items-center justify-center",
+                          assistant.is_archived 
+                            ? "bg-slate-700" 
+                            : "bg-gradient-to-r from-purple-600/50 to-pink-600/50"
+                        )}>
                           <Bot className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <h3 className="font-bold text-white">{assistant.name}</h3>
+                          <h3 className={cn("font-bold", assistant.is_archived ? "text-slate-400" : "text-white")}>
+                            {assistant.name}
+                          </h3>
                           <p className="text-sm text-slate-400">{assistant.description}</p>
                         </div>
                       </div>
                       <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-white transition-colors" />
                     </div>
-                    <button
-                      onClick={(e) => handleArchive(assistant.id, e)}
-                      className="absolute top-3 right-3 p-2 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 rounded-lg transition-all"
-                      title="Архивировать"
-                    >
-                      <FolderArchive size={14} className="text-slate-400" />
-                    </button>
                   </button>
                 ))}
               </div>

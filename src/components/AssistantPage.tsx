@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, FolderArchive, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, FolderArchive, AlertTriangle, Archive } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
 import { cn } from '../lib/utils';
@@ -44,7 +44,7 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [message, setMessage] = useState('');
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [assistantData, setAssistantData] = useState<{name: string; description: string} | null>(null);
+  const [assistantData, setAssistantData] = useState<{name: string; description: string; is_archived: boolean} | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -97,7 +97,7 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
       }
 
       if (assistantId) {
-        const { data: assistantData } = await supabase.from('assistants').select('name, description').eq('id', assistantId).single();
+        const { data: assistantData } = await supabase.from('assistants').select('name, description, is_archived').eq('id', assistantId).single();
         if (assistantData) setAssistantData(assistantData);
       }
     } catch (error) {
@@ -166,6 +166,23 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
       if (onBack) onBack();
     } catch (error) {
       console.error('Error archiving:', error);
+    }
+  };
+
+  const handleUnarchive = async () => {
+    if (!assistantId) return;
+    try {
+      const { error } = await supabase
+        .from('assistants')
+        .update({ is_archived: false })
+        .eq('id', assistantId);
+      
+      if (error) throw error;
+      
+      setAssistantData(prev => prev ? { ...prev, is_archived: false } : null);
+      setMessage('Ассистент разархивирован!');
+    } catch (error) {
+      console.error('Error unarchiving:', error);
     }
   };
 
@@ -333,13 +350,23 @@ export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantP
           </div>
           <div className="flex items-center gap-2">
             {assistantId && assistantId !== 'telegram-parser' && (
-              <button
-                onClick={() => setShowArchiveModal(true)}
-                className="p-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl transition-all border border-red-500/30"
-                title="Архивировать"
-              >
-                <FolderArchive size={18} />
-              </button>
+              assistantData?.is_archived ? (
+                <button
+                  onClick={handleUnarchive}
+                  className="p-3 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 rounded-xl transition-all border border-emerald-500/30"
+                  title="Разархивировать"
+                >
+                  <Archive size={18} />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowArchiveModal(true)}
+                  className="p-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl transition-all border border-red-500/30"
+                  title="Архивировать"
+                >
+                  <FolderArchive size={18} />
+                </button>
+              )
             )}
             <button
               onClick={handleSave}
