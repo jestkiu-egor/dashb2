@@ -95,11 +95,11 @@ Deno.serve(async (req) => {
       JSON.stringify({
         title: parsed.title || text.slice(0, 50),
         description: parsed.description || text,
-        assignee: parsed.assignee || null,
-        dueDate: parsed.dueDate || null,
         amount: parsed.amount || 0,
-        priority: parsed.priority || 'medium',
         externalUrl: parsed.externalUrl || '',
+        status: parsed.status || 'backlog',
+        isPaid: parsed.isPaid || false,
+        isAgreed: parsed.isAgreed || false,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

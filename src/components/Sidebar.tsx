@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Home, Wallet, ListTodo, ChevronRight, ChevronLeft, ChevronDown, LayoutDashboard, Folder, Check, Bot, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import { Project } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface SidebarProps {
   activeTab: string;
@@ -17,6 +18,18 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
+  const [assistants, setAssistants] = useState<{id: string, name: string}[]>([]);
+
+  useEffect(() => {
+    loadAssistants();
+  }, []);
+
+  const loadAssistants = async () => {
+    try {
+      const { data } = await supabase.from('assistants').select('id, name').eq('is_archived', false);
+      if (data) setAssistants(data);
+    } catch (e) { console.log('Ошибка загрузки ассистентов'); }
+  };
 
   const menuItems = [
     { id: 'home', label: 'Главная', icon: Home },
@@ -25,9 +38,9 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
     { id: 'assistant', label: 'Интеграции', icon: Bot, hasSubmenu: true },
   ];
 
-  const integrationItems = [
-    { id: 'assistant', label: 'Ассистент-парсер', icon: Bot },
-  ];
+  const integrationItems = assistants.length > 0 
+    ? assistants.map(a => ({ id: a.id, label: a.name, icon: Bot }))
+    : [{ id: 'telegram-parser', label: 'Ассистент-парсер', icon: Bot }];
 
   const handleBacklogClick = () => {
     if (activeTab === 'backlog') {
@@ -179,11 +192,11 @@ export const Sidebar = ({ activeTab, setActiveTab, projects, selectedProjectId, 
                           <button
                             type="button"
                             key={subItem.id}
-                            onClick={() => { setActiveTab(subItem.id); if (onOpenAssistant) onOpenAssistant(); setIsIntegrationsOpen(false); }}
+                            onClick={() => { setActiveTab('assistant'); if (onOpenAssistant) onOpenAssistant(); setIsIntegrationsOpen(false); }}
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all outline-none focus:outline-none active:outline-none text-slate-400 hover:bg-white/5 hover:text-white"
                           >
                             <SubIcon size={14} />
-                            <span>Ассистент-парсер</span>
+                            <span>{subItem.label}</span>
                           </button>
                         );
                       })}

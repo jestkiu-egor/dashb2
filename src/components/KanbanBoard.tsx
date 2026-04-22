@@ -17,30 +17,36 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
-import { Task, TaskStatus, Project } from '../types';
+import { Task, TaskStatus, Project, Column } from '../types';
 import { format, isPast } from 'date-fns';
 import { cn } from '../lib/utils';
 import { VoiceInput } from '../lib/VoiceInput';
 import { parseTaskWithLLM } from '../lib/llm';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
+import { TaskComments } from './TaskComments';
 
 interface KanbanBoardProps {
   tasks: Task[];
   projects: Project[];
   selectedProjectId: string | null;
-  onUpdateTasks: (tasks: Task[]) => void;
+  columns: Column[];
+  onUpdateTasks: (tasks: Task[], singleTaskId?: string) => void;
   onDeleteTask: (taskId: string) => void;
   onSelectProject: (projectId: string | null) => void;
+  onUpdateColumn?: (column: Column) => void;
+  onDeleteColumn?: (columnId: string) => void;
+  onAddColumn?: (column: Column) => void;
+  onReorderColumns?: (columns: Column[]) => void;
 }
 
-interface Column {
+interface LocalColumn {
   id: string;
   label: string;
   color: string;
 }
 
-const DEFAULT_COLUMNS: Column[] = [
+const DEFAULT_COLUMNS: LocalColumn[] = [
   { id: 'todo', label: 'Нужно сделать', color: 'bg-slate-500' },
   { id: 'in-progress', label: 'В работе', color: 'bg-indigo-500' },
   { id: 'review', label: 'На проверке', color: 'bg-purple-500' },
@@ -77,7 +83,7 @@ function TaskModal({ task, columns, onClose, onUpdate, onDelete }: TaskModalProp
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="relative w-full max-w-2xl h-full bg-slate-950 border-l border-white/10 flex flex-col overflow-hidden"
+        className="relative w-[60vw] max-w-6xl h-full bg-slate-950 border-l border-white/10 flex flex-col overflow-hidden"
       >
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -85,12 +91,18 @@ function TaskModal({ task, columns, onClose, onUpdate, onDelete }: TaskModalProp
             <span className="text-slate-400 text-sm">{column?.label}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => onDelete(task.id)}
               className="p-2 hover:bg-red-500/20 rounded-xl text-red-400"
               title="Удалить задачу"
             >
               <Trash2 size={20} />
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-sm"
+            >
+              Сохранить
             </button>
             <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl text-slate-400">
               <X size={20} />
@@ -98,86 +110,130 @@ function TaskModal({ task, columns, onClose, onUpdate, onDelete }: TaskModalProp
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-          <div className="mb-6">
-            <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Название задачи</label>
-            <input 
-              value={editedTask.title}
-              onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-xl font-bold outline-none focus:border-indigo-500 transition-all"
-            />
-          </div>
-          
-          <div className="mb-6">
-            <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Описание</label>
-            <textarea
-              value={editedTask.description || ''}
-              onChange={(e) => setEditedTask({ ...editedTask, description: e.target.value })}
-              placeholder="Детали задачи..."
-              rows={5}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-slate-300 outline-none focus:border-indigo-500 transition-all resize-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div>
-              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Сумма</h3>
-              <span className="text-indigo-400 font-bold text-xl">
-                {task.amount?.toLocaleString() || 0} ₽
-              </span>
-            </div>
-            <div>
-              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Оплата</h3>
-              <button
-                onClick={() => setEditedTask({ ...editedTask, isPaid: !task.isPaid })}
-                className={cn(
-                  "px-4 py-2 rounded-xl font-bold border",
-                  task.isPaid 
-                    ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" 
-                    : "bg-white/5 border-white/10 text-slate-400"
-                )}
-              >
-                {task.isPaid ? 'Оплачено' : 'Не оплачено'}
-              </button>
-            </div>
-          </div>
-
-          {task.externalUrl && (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
             <div className="mb-6">
-              <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Ссылка</h3>
-              <a href={task.externalUrl} target="_blank" rel="noreferrer" 
-                className="text-indigo-400 hover:text-indigo-300 break-all">
-                {task.externalUrl}
-              </a>
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Название задачи</label>
+              <input
+                value={editedTask.title}
+                onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-white text-base font-bold outline-none focus:border-indigo-500 transition-all"
+              />
             </div>
-          )}
 
-          <div className="mb-6">
-            <h3 className="text-slate-400 text-sm font-bold uppercase mb-2">Статус</h3>
-            <div className="flex flex-wrap gap-2">
-              {columns.map(col => (
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Сумма (₽)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={editedTask.amount || 0}
+                onChange={(e) => setEditedTask({ ...editedTask, amount: Math.round(Number(e.target.value) * 100) / 100 })}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-indigo-400 text-xl font-bold outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Ссылка (Битрикс24)</label>
+              <input
+                type="url"
+                value={editedTask.externalUrl || ''}
+                onChange={(e) => setEditedTask({ ...editedTask, externalUrl: e.target.value })}
+                placeholder="https://..."
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-indigo-400 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Описание</label>
+              <textarea
+                value={editedTask.description || ''}
+                onChange={(e) => setEditedTask({ ...editedTask, description: e.target.value })}
+                placeholder="Детали задачи..."
+                rows={8}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-slate-300 text-base outline-none focus:border-indigo-500 transition-all resize-none"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Статус</label>
+              <div className="flex flex-wrap gap-2">
+                {columns.map(col => (
+                  <button
+                    key={col.id}
+                    onClick={() => setEditedTask({ ...editedTask, status: col.id as TaskStatus })}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-sm font-medium border transition-all",
+                      editedTask.status === col.id
+                        ? "bg-indigo-600 border-indigo-500 text-white"
+                        : "bg-white/5 border-white/10 text-slate-400 hover:border-white/30"
+                    )}
+                  >
+                    {col.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Оплачено</label>
+              <div className="flex gap-2">
                 <button
-                  key={col.id}
-                  onClick={() => setEditedTask({ ...editedTask, status: col.id as TaskStatus })}
+                  onClick={() => setEditedTask({ ...editedTask, isPaid: true })}
                   className={cn(
-                    "px-3 py-1 rounded-full text-xs font-bold border transition-all",
-                    task.status === col.id 
-                      ? "bg-indigo-600 border-indigo-500 text-white" 
-                      : "bg-white/5 border-white/10 text-slate-400 hover:border-white/30"
+                    "flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-all",
+                    editedTask.isPaid
+                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                      : "bg-white/5 border-white/10 text-slate-500"
                   )}
                 >
-                  {col.label}
+                  Да
                 </button>
-              ))}
+                <button
+                  onClick={() => setEditedTask({ ...editedTask, isPaid: false })}
+                  className={cn(
+                    "flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-all",
+                    editedTask.isPaid === false
+                      ? "bg-red-500/20 border-red-500 text-red-400"
+                      : "bg-white/5 border-white/10 text-slate-500"
+                  )}
+                >
+                  Нет
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-slate-400 text-xs font-bold uppercase mb-2 tracking-widest">Согласовано</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditedTask({ ...editedTask, isAgreed: true })}
+                  className={cn(
+                    "flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-all",
+                    editedTask.isAgreed
+                      ? "bg-emerald-500/20 border-emerald-500 text-emerald-400"
+                      : "bg-white/5 border-white/10 text-slate-500"
+                  )}
+                >
+                  Да
+                </button>
+                <button
+                  onClick={() => setEditedTask({ ...editedTask, isAgreed: false })}
+                  className={cn(
+                    "flex-1 px-4 py-3 rounded-xl text-sm font-medium border transition-all",
+                    editedTask.isAgreed === false
+                      ? "bg-red-500/20 border-red-500 text-red-400"
+                      : "bg-white/5 border-white/10 text-slate-500"
+                  )}
+                >
+                  Нет
+                </button>
+              </div>
             </div>
           </div>
+        </div>
 
-          <button
-            onClick={handleSave}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold"
-          >
-            Сохранить
-          </button>
+        <div className="flex-none h-80 border-t border-white/10">
+          <TaskComments taskId={task.id} />
         </div>
       </motion.div>
     </motion.div>
@@ -212,13 +268,18 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
           <h4 className="text-white font-medium text-sm mb-3">{task.title}</h4>
           
           <div className="flex items-center justify-between text-xs text-slate-500">
+            
             <div className="flex items-center gap-2">
-              <Clock size={12} />
-              <span className={cn(isOverdue && "text-red-400 font-bold")}>
-                {task.dueDate ? format(new Date(task.dueDate), 'dd.MM') : '-'}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
+              {task.isPaid ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-medium">Опл</span>
+              ) : (
+                <span className="text-slate-600">-</span>
+              )}
+              {task.isAgreed ? (
+                <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-medium">Согл</span>
+              ) : (
+                <span className="text-slate-600">-</span>
+              )}
               {task.comments.length > 0 && (
                 <span className="flex items-center gap-1">
                   <MessageSquare size={12} />
@@ -226,7 +287,7 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
                 </span>
               )}
               {task.externalUrl && (
-                <a href={task.externalUrl} target="_blank" rel="noreferrer" 
+                <a href={task.externalUrl} target="_blank" rel="noreferrer"
                   className="text-indigo-400 hover:text-indigo-300"
                   onClick={(e) => e.stopPropagation()}>
                   <ExternalLink size={12} />
@@ -241,7 +302,7 @@ function TaskCard({ task, column, index }: { task: Task; column: Column; index: 
 }
 
 function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskClick }: { 
-  column: Column; 
+  column: LocalColumn; 
   tasks: Task[];
   onEdit: (newLabel: string) => void;
   onDelete: () => void;
@@ -260,7 +321,7 @@ function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskCli
   };
 
   return (
-    <div className="flex-shrink-0 w-72 flex flex-col bg-white/[0.02] rounded-2xl p-3 border border-white/[0.05]">
+    <div className="flex-shrink-0 w-[320px] flex flex-col bg-white/[0.02] rounded-2xl p-3 border border-white/[0.05]">
       <div className="flex items-center justify-between px-2 mb-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <GripVertical size={14} className="text-slate-600 cursor-grab" />
@@ -329,11 +390,11 @@ function ColumnComponent({ column, tasks, onEdit, onDelete, onAddTask, onTaskCli
   );
 }
 
-export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks, onDeleteTask, onSelectProject }: KanbanBoardProps) => {
-  const [columns, setColumns] = useState<Column[]>(DEFAULT_COLUMNS);
+export const KanbanBoard = ({ tasks, projects, selectedProjectId, columns: dbColumns, onUpdateTasks, onSelectProject, onUpdateColumn, onDeleteColumn, onAddColumn, onReorderColumns }: KanbanBoardProps) => {
+  const columns = dbColumns?.length > 0 ? dbColumns : DEFAULT_COLUMNS;
   const [isAddColumnModalOpen, setIsAddColumnModalOpen] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
-  const [newTaskStatus, setNewTaskStatus] = useState<string>('todo');
+  const [newTaskStatus, setNewTaskStatus] = useState<string>(columns[0]?.id || 'backlog');
   const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskAssignee, setNewTaskAssignee] = useState('');
@@ -453,7 +514,12 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
       const newColumns = Array.from(columns);
       const [removed] = newColumns.splice(source.index, 1);
       newColumns.splice(destination.index, 0, removed);
-      setColumns(newColumns);
+      const reorderedColumns = newColumns.map((col, idx) => ({ ...col, order: idx }));
+      if (onReorderColumns) {
+        onReorderColumns(reorderedColumns);
+      } else {
+        setColumns(reorderedColumns);
+      }
       return;
     }
 
@@ -481,7 +547,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
         }
         return t;
       });
-      onUpdateTasks(updatedTasks);
+      onUpdateTasks(updatedTasks, draggableId);
     } else {
       // Move to different column
       const taskToMove = tasks.find(t => t.id === draggableId);
@@ -498,14 +564,21 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
       
       // Rebuild tasks
       const otherTasks = updatedTasks.filter(t => t.status !== destColumnId);
-      onUpdateTasks([...otherTasks, ...destColumnTasks]);
+      onUpdateTasks([...otherTasks, ...destColumnTasks], draggableId);
     }
   };
 
   const handleEditColumn = (columnId: string, newLabel: string) => {
-    setColumns(columns.map(c => 
-      c.id === columnId ? { ...c, label: newLabel } : c
-    ));
+    if (onUpdateColumn) {
+      const column = columns.find(c => c.id === columnId);
+      if (column) {
+        onUpdateColumn({ ...column, label: newLabel });
+      }
+    } else {
+      setColumns(columns.map(c => 
+        c.id === columnId ? { ...c, label: newLabel } : c
+      ));
+    }
   };
 
   const handleDeleteColumn = (columnId: string) => {
@@ -514,20 +587,34 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
 
   const confirmDeleteColumn = () => {
     if (deleteConfirmColumn) {
-      setColumns(columns.filter(c => c.id !== deleteConfirmColumn));
+      if (onDeleteColumn) {
+        onDeleteColumn(deleteConfirmColumn);
+      } else {
+        setColumns(columns.filter(c => c.id !== deleteConfirmColumn));
+      }
       setDeleteConfirmColumn(null);
     }
   };
 
-  const handleAddColumn = () => {
+  const handleAddColumnLocal = () => {
     if (!newColumnName.trim()) return;
-    const newId = 'col-' + Math.random().toString(36).substr(2, 9);
     const colors = ['bg-slate-500', 'bg-indigo-500', 'bg-purple-500', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500', 'bg-cyan-500'];
-    setColumns([...columns, {
-      id: newId,
-      label: newColumnName.trim(),
-      color: colors[columns.length % colors.length]
-    }]);
+    if (onAddColumn && selectedProjectId) {
+      onAddColumn({
+        id: '',
+        project_id: selectedProjectId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length],
+        order: columns.length
+      });
+    } else {
+      const newId = 'col-' + Math.random().toString(36).substr(2, 9);
+      setColumns([...columns, {
+        id: newId,
+        label: newColumnName.trim(),
+        color: colors[columns.length % colors.length]
+      }]);
+    }
     setNewColumnName('');
     setIsAddColumnModalOpen(false);
   };
@@ -539,7 +626,7 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
     setNewTaskAmount('');
     setNewTaskLink('');
     setNewTaskDescription('');
-    setNewTaskStatus('todo');
+    setNewTaskStatus(columns[0]?.id || 'backlog');
   };
 
   const handleAddTask = () => {
@@ -558,14 +645,14 @@ export const KanbanBoard = ({ tasks, projects, selectedProjectId, onUpdateTasks,
       externalUrl: newTaskLink || undefined,
       assignee: newTaskAssignee || undefined,
     };
-    onUpdateTasks([...tasks, newTask]);
+    onUpdateTasks([...tasks, newTask], newTask.id);
     resetTaskForm();
     setIsAddTaskModalOpen(false);
   };
 
   const handleUpdateTask = (updatedTask: Task) => {
     const updatedTasks = tasks.map(t => t.id === updatedTask.id ? updatedTask : t);
-    onUpdateTasks(updatedTasks);
+    onUpdateTasks(updatedTasks, updatedTask.id);
     setSelectedTask(updatedTask);
   };
 
@@ -688,7 +775,7 @@ alert('Ошибка связи с нейронкой. Проверьте нас�
             </button>
             <button
               onClick={() => {
-                setNewTaskStatus('todo');
+                setNewTaskStatus(columns[0]?.id || 'backlog');
                 setIsAddTaskModalOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-all text-sm"

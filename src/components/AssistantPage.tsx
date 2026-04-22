@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check } from 'lucide-react';
+import { Save, Loader2, Bot, Plus, Clipboard, Zap, Pencil, X, Check, ArrowLeft, Archive, AlertTriangle } from 'lucide-react';
+import { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { AssistantSettings } from '../types';
 import { cn } from '../lib/utils';
 
 interface AssistantPageProps {
   isOpen?: boolean;
+  assistantId?: string;
+  onBack?: () => void;
 }
 
 const parseProxyString = (proxyString: string): { host: string; port: number; login: string; password: string } | null => {
@@ -21,7 +24,7 @@ const parseProxyString = (proxyString: string): { host: string; port: number; lo
   return { host, port, login, password };
 };
 
-export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
+export const AssistantPage = ({ isOpen = true, assistantId, onBack }: AssistantPageProps) => {
   const [settings, setSettings] = useState<AssistantSettings>({
     id: '',
     llm_api_url: '',
@@ -41,6 +44,8 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
   const [proxyStatus, setProxyStatus] = useState<'ok' | 'error' | null>(null);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [message, setMessage] = useState('');
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [assistantData, setAssistantData] = useState<{name: string; description: string} | null>(null);
 
   useEffect(() => {
     if (!supabase) {
@@ -48,15 +53,19 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
       return;
     }
     loadSettings();
-  }, []);
+  }, [assistantId]);
 
   const loadSettings = async () => {
     try {
-      const { data, error } = await supabase
-        .from('assistant_settings')
-        .select('*')
-        .limit(1)
-        .single();
+      let query = supabase.from('assistant_settings').select('*');
+      
+      if (assistantId) {
+        query = query.eq('assistant_id', assistantId).limit(1).single();
+      } else {
+        query = query.limit(1).single();
+      }
+      
+      const { data, error } = await query;
 
       if (error && error.code !== 'PGRST116') {
         throw error;
@@ -74,6 +83,23 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
           proxy_login: data.proxy_login || '',
           proxy_password: data.proxy_password || '',
         });
+      } else if (assistantId) {
+        setSettings({
+          id: '',
+          llm_api_url: '',
+          llm_model: 'llama-3.3-70b-versatile',
+          llm_api_key: '',
+          llm_prompt: '',
+          proxy_host: '',
+          proxy_port: 0,
+          proxy_login: '',
+          proxy_password: '',
+        });
+      }
+
+      if (assistantId) {
+        const { data: assistantData } = await supabase.from('assistants').select('name, description').eq('id', assistantId).single();
+        if (assistantData) setAssistantData(assistantData);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -91,20 +117,29 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
     setMessage('');
 
     try {
+      const saveData: any = {
+        llm_api_url: settings.llm_api_url,
+        llm_model: settings.llm_model,
+        llm_api_key: settings.llm_api_key,
+        llm_prompt: settings.llm_prompt,
+        proxy_host: settings.proxy_host,
+        proxy_port: settings.proxy_port,
+        proxy_login: settings.proxy_login,
+        proxy_password: settings.proxy_password,
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (assistantId) {
+        saveData.assistant_id = assistantId;
+      }
+      
+      if (settings.id) {
+        saveData.id = settings.id;
+      }
+
       const { error } = await supabase
         .from('assistant_settings')
-        .upsert({
-          id: settings.id || undefined,
-          llm_api_url: settings.llm_api_url,
-          llm_model: settings.llm_model,
-          llm_api_key: settings.llm_api_key,
-          llm_prompt: settings.llm_prompt,
-          proxy_host: settings.proxy_host,
-          proxy_port: settings.proxy_port,
-          proxy_login: settings.proxy_login,
-          proxy_password: settings.proxy_password,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
+        .upsert(saveData, { onConflict: 'id' });
 
       if (error) throw error;
 
@@ -115,6 +150,23 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
       setMessage('Ошибка сохранения');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!assistantId) return;
+    try {
+      const { error } = await supabase
+        .from('assistants')
+        .update({ is_archived: true })
+        .eq('id', assistantId);
+      
+      if (error) throw error;
+      
+      setShowArchiveModal(false);
+      if (onBack) onBack();
+    } catch (error) {
+      console.error('Error archiving:', error);
     }
   };
 
@@ -216,6 +268,31 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
 
   if (!isOpen) return null;
 
+  if (showArchiveModal) {
+    return (
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-slate-900 border border-white/10 rounded-2xl p-6 max-w-md w-full">
+          <h3 className="text-xl font-bold text-white mb-4">Подтверждение</h3>
+          <p className="text-slate-300 mb-6">Ты уверен, что хочешь архивировать "{assistantData?.name || assistantId}"?</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setShowArchiveModal(false)}
+              className="flex-1 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleArchive}
+              className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold"
+            >
+              Архивировать
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!supabase) {
     return (
       <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
@@ -243,22 +320,41 @@ export const AssistantPage = ({ isOpen = true }: AssistantPageProps) => {
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-slate-400" />
+              </button>
+            )}
             <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl flex items-center justify-center">
               <Bot className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white">Ассистент-парсер</h1>
-              <p className="text-slate-400 text-sm">Настройки AI и прокси</p>
+              <h1 className="text-2xl font-bold text-white">{assistantData?.name || assistantId || 'Ассистент-парсер'}</h1>
+              <p className="text-slate-400 text-sm">{assistantData?.description || 'Настройки AI и прокси'}</p>
             </div>
           </div>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={18} />}
-            Сохранить
-          </button>
+          <div className="flex items-center gap-2">
+            {assistantId && assistantId !== 'telegram-parser' && (
+              <button
+                onClick={() => setShowArchiveModal(true)}
+                className="p-3 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-xl transition-all border border-red-500/30"
+                title="Архивировать"
+              >
+                <Archive size={18} />
+              </button>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all disabled:opacity-50"
+            >
+              {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save size={18} />}
+              Сохранить
+            </button>
+          </div>
         </div>
 
         {isLoading ? (

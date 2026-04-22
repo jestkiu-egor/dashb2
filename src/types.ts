@@ -1,10 +1,27 @@
 export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
 
+export interface Column {
+  id: string;
+  project_id: string;
+  label: string;
+  color: string;
+  order: number;
+}
+
 export interface Comment {
   id: string;
   author: string;
   text: string;
   createdAt: Date;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  text: string;
+  file_url?: string;
+  file_name?: string;
+  created_at: string;
 }
 
 export interface Task {
